@@ -1,0 +1,24 @@
+{
+    "name": "calculator-fun",
+    "version": "1.0.0",
+    "description": "fun calculator project",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "build": "webpack"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/RubenvanRijen/calculator-fun.git"
+    },
+    "author": "RubenR",
+    "license": "ISC",
+    "bugs": {
+        "url": "https://github.com/RubenvanRijen/calculator-fun/issues"
+    },
+    "homepage": "https://github.com/RubenvanRijen/calculator-fun#readme",
+    "devDependencies": {
+        "webpack": "^5.88.2",
+        "webpack-cli": "^5.1.4"
+    }
+}

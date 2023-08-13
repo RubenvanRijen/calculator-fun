@@ -1,46 +1,38 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Index = void 0;
 var Calculator_1 = require("./Calculator");
-var Index = /** @class */ (function () {
-    function Index() {
-        this.numberButtons = document.querySelectorAll("[data-number]");
-        this.operationButtons = document.querySelectorAll("[data-operation]");
-        this.equalsButton = document.querySelector("[data-equals]");
-        this.deleteButton = document.querySelector("[data-delete]");
-        this.allClearButton = document.querySelector("[data-all-clear]");
-        this.previousOperandTextElement = document.querySelector("[data-previous-operand]");
-        this.currentOperandTextElement = document.querySelector("[data-current-operand]");
-        this.init();
-    }
-    Index.prototype.init = function () {
-        var _a, _b, _c;
-        var calculator = new Calculator_1.Calculator(this.previousOperandTextElement, this.currentOperandTextElement);
-        this.numberButtons.forEach(function (button) {
-            button.addEventListener('click', function () {
-                calculator.appendNumber(button.innerText);
-                calculator.updateDisplay();
-            });
-        });
-        this.operationButtons.forEach(function (button) {
-            button.addEventListener('click', function () {
-                calculator.chooseoperation(button.innerText);
-                calculator.updateDisplay();
-            });
-        });
-        (_a = this.equalsButton) === null || _a === void 0 ? void 0 : _a.addEventListener('click', function (button) {
-            calculator.compute();
+function init() {
+    var numberButtons = document.querySelectorAll("[data-number]");
+    var operationButtons = document.querySelectorAll("[data-operation]");
+    var equalsButton = document.querySelector("[data-equals]");
+    var deleteButton = document.querySelector("[data-delete]");
+    var allClearButton = document.querySelector("[data-all-clear]");
+    var previousOperandTextElement = document.querySelector("[data-previous-operand]");
+    var currentOperandTextElement = document.querySelector("[data-current-operand]");
+    var calculator = new Calculator_1.Calculator(previousOperandTextElement, currentOperandTextElement);
+    numberButtons === null || numberButtons === void 0 ? void 0 : numberButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+            calculator.appendNumber(button.innerText);
             calculator.updateDisplay();
         });
-        (_b = this.allClearButton) === null || _b === void 0 ? void 0 : _b.addEventListener('click', function (button) {
-            calculator.clear();
+    });
+    operationButtons === null || operationButtons === void 0 ? void 0 : operationButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+            calculator.chooseoperation(button.innerText);
             calculator.updateDisplay();
         });
-        (_c = this.deleteButton) === null || _c === void 0 ? void 0 : _c.addEventListener('click', function (button) {
-            calculator.delete();
-            calculator.updateDisplay();
-        });
-    };
-    return Index;
-}());
-exports.Index = Index;
+    });
+    equalsButton === null || equalsButton === void 0 ? void 0 : equalsButton.addEventListener('click', function (button) {
+        calculator.compute();
+        calculator.updateDisplay();
+    });
+    allClearButton === null || allClearButton === void 0 ? void 0 : allClearButton.addEventListener('click', function (button) {
+        calculator.clear();
+        calculator.updateDisplay();
+    });
+    deleteButton === null || deleteButton === void 0 ? void 0 : deleteButton.addEventListener('click', function (button) {
+        calculator.delete();
+        calculator.updateDisplay();
+    });
+}
+init();
