@@ -8,39 +8,39 @@ function init(): void{
      const operationButtons = document.querySelectorAll("[data-operation]");
      const equalsButton = document.querySelector("[data-equals]");
      const deleteButton = document.querySelector("[data-delete]");
-     const allClearButton = document.querySelector("[data-all-clear]");
-     const previousOperandTextElement = document.querySelector("[data-previous-operand]");
-     const currentOperandTextElement = document.querySelector("[data-current-operand]");
+     const allClearButton = document.querySelector("[data-clear]");
+     const previousCalculationTextElement = document.querySelector("[data-previous-calculation]");
+     const currentCalculationTextElement = document.querySelector("[data-current-calculation]");
 
-    const calculator = new Calculator(previousOperandTextElement, currentOperandTextElement);
+    const calculator = new Calculator(previousCalculationTextElement, currentCalculationTextElement);
 
 numberButtons?.forEach((button: Element) => {
     button.addEventListener('click', () => {
         calculator.appendNumber((button as HTMLElement).innerText);
-        calculator.updateDisplay();
+        calculator.updateCalculatorDisplay();
     })
 });
 
 operationButtons?.forEach((button: Element) => {
     button.addEventListener('click', () => {
-        calculator.chooseoperation((button as HTMLElement).innerText);
-        calculator.updateDisplay();
+        calculator.chooseCalculationType((button as HTMLElement).innerText);
+        calculator.updateCalculatorDisplay();
     })
 });
 
 equalsButton?.addEventListener('click', (button) => {
-    calculator.compute();
-    calculator.updateDisplay();
+    calculator.calculate();
+    calculator.updateCalculatorDisplay();
 });
 
 allClearButton?.addEventListener('click', (button) => {
     calculator.clear();
-    calculator.updateDisplay();
+    calculator.updateCalculatorDisplay();
 });
 
 deleteButton?.addEventListener('click', (button) => {
     calculator.delete();
-    calculator.updateDisplay();
+    calculator.updateCalculatorDisplay();
 });
 }
 
