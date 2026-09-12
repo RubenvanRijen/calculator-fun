@@ -36,9 +36,20 @@ export function setupGraphPanel(
   series: FunctionSeries,
   /** Supplies stored values, so "A*x" can be plotted. */
   contextOf: () => EvalContext,
-  /** Loose points drawn over the curves, for a scatter from the Stats tab. */
+  /**
+   * The points a scatter would draw, for the Stats tab's data.
+   *
+   * Read each time rather than copied, so editing a cell moves its point and
+   * clearing the lists takes the scatter with it -- a snapshot would go on
+   * showing data that had been deleted.
+   */
   scatterOf: () => readonly PlotPoint[] = () => []
-): { render: () => void; forgetArea: () => void; frameTo: (points: readonly PlotPoint[]) => void } {
+): {
+  render: () => void;
+  forgetArea: () => void;
+  frameTo: (points: readonly PlotPoint[]) => void;
+  showScatter: (on: boolean) => void;
+} {
   const query = <T extends HTMLElement>(selector: string): T | null =>
     root.querySelector<T>(selector);
 
@@ -51,6 +62,10 @@ export function setupGraphPanel(
   const errorElement = query("[data-graph-error]");
   const readout = query("[data-graph-readout]");
   const panel = query('[data-panel="graph"]');
+  const scatterChip = query("[data-graph-scatter]");
+
+  /** Whether the chart is showing the statistics data as well as its curves. */
+  let plottingData = false;
 
   let plotted: MultiPlotResult | null = null;
   let range = { xMin: -10, xMax: 10 };
@@ -131,7 +146,7 @@ export function setupGraphPanel(
     // Only the points that will actually be drawn: one far-off row would
     // otherwise stretch the window for points that never appear, flattening
     // the visible ones into a line along the bottom.
-    const scatter = scatterOf().filter(
+    const scatter = (plottingData ? scatterOf() : []).filter(
       (point) => point.x >= range.xMin && point.x <= range.xMax
     );
     if (scatter.length > 0) {
@@ -409,5 +424,24 @@ export function setupGraphPanel(
     if (maxInput) maxInput.value = boundText(fitted.max);
   };
 
-  return { render, forgetArea, frameTo };
+  /**
+   * Turn the scatter on or off.
+   *
+   * It needs an off: while data is on the chart the window frames the data,
+   * so an ordinary curve is drawn against the data's scale and can end up far
+   * off the top of the box. Without this the only ways back would be deleting
+   * the data or reloading the page.
+   */
+  const showScatter = (on: boolean): void => {
+    plottingData = on;
+    scatterChip?.classList.toggle("is-active", on);
+    scatterChip?.setAttribute("aria-pressed", String(on));
+    render();
+  };
+
+  scatterChip?.addEventListener("click", () => {
+    showScatter(!plottingData);
+  }, { signal });
+
+  return { render, forgetArea, frameTo, showScatter };
 }

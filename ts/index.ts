@@ -113,37 +113,10 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     registers: calculator.registers,
     ans: calculator.lastAnswer ?? undefined,
   });
-  // Whether the graph is showing the statistics data. The points themselves
-  // are read from the lists each time rather than copied, so editing a cell
-  // moves its point and clearing the lists takes the scatter with it -- a
-  // snapshot would go on showing data that had been deleted.
-  let plottingData = false;
-  const scatterToggle = root.querySelector<HTMLElement>("[data-graph-scatter]");
-
   const graph = setupGraphPanel(
-    root, doc, signal, series, graphContext,
-    () => (plottingData ? lists.pairs() : [])
+    root, doc, signal, series, graphContext, () => lists.pairs()
   );
   const table = setupTablePanel(root, doc, signal, series, graphContext);
-
-  /**
-   * Turn the scatter on or off.
-   *
-   * It needs an off: while data is on the chart the window frames the data,
-   * so an ordinary curve is drawn against the data's scale and can end up far
-   * off the top of the box. Without this the only ways back would be deleting
-   * the data or reloading the page.
-   */
-  function showScatter(on: boolean): void {
-    plottingData = on;
-    scatterToggle?.classList.toggle("is-active", on);
-    scatterToggle?.setAttribute("aria-pressed", String(on));
-    graph.render();
-  }
-
-  scatterToggle?.addEventListener("click", () => {
-    showScatter(!plottingData);
-  }, { signal });
 
   const matrixPanel = setupMatrixPanel(root, doc, signal, matrices);
 
@@ -162,7 +135,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     const free = series.all().findIndex((expression) => expression === "");
     series.set(free === -1 ? SERIES_COUNT - 1 : free, fit);
 
-    showScatter(true);
+    graph.showScatter(true);
     showTab("graph");
   });
 
