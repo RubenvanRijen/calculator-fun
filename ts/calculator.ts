@@ -1,4 +1,4 @@
-import { evaluateString, isOperation } from "./expression.js";
+import { evaluateString, isOperation, FUNCTION_NAMES } from "./expression.js";
 import type { Operation } from "./types/operation.js";
 import type { HistoryEntry } from "./interfaces/history-entry.js";
 
@@ -23,6 +23,22 @@ function expectsOperand(text: string): boolean {
   if (text === "") return true;
   const last = text[text.length - 1] ?? "";
   return OPERATOR_CHARACTERS.includes(last);
+}
+
+/**
+ * Text that a single keypress inserts as a unit. DEL removes one of these
+ * rather than one character, so undoing the "(e)" or "sqrt(" key takes one
+ * press rather than three or five. Longest first.
+ */
+const KEYPRESS_ATOMS: readonly string[] = [
+  "(e)",
+  ...FUNCTION_NAMES.map((name) => `${name}(`),
+].sort((a, b) => b.length - a.length);
+
+/** How many characters the last keypress contributed. */
+function trailingAtomLength(expression: string): number {
+  const atom = KEYPRESS_ATOMS.find((candidate) => expression.endsWith(candidate));
+  return atom === undefined ? 1 : atom.length;
 }
 
 /** Close any parentheses the user left open, so "sqrt(9" still evaluates. */
@@ -92,7 +108,10 @@ export class Calculator {
       this.clear();
       return;
     }
-    this.expression = this.expression.slice(0, -1);
+    this.expression = this.expression.slice(
+      0,
+      -trailingAtomLength(this.expression)
+    );
     this.#refreshPreview();
   }
 

@@ -90,6 +90,51 @@ test.describe("scientific keys", () => {
   });
 });
 
+test.describe("the 2nd shift layer", () => {
+  const keypad = (page: Page) => page.locator("[data-keypad]");
+
+  test("reveals the alternate legend and hides the primary", async ({ page }) => {
+    const root = page.locator('[data-keypad] button[data-action="constant"]');
+    // The accessible name, not textContent: the inactive legend is display:none
+    // so it stays out of the accessibility tree, which is what keeps
+    // getByRole("button", { name }) unambiguous.
+    await expect(root).toHaveAccessibleName("\u03c0");
+    await expect(root.locator(".legend-alt")).toBeHidden();
+
+    await press(page, "2nd");
+    await expect(keypad(page)).toHaveAttribute("data-shift", "on");
+    await expect(root).toHaveAccessibleName("e");
+    await expect(root.locator(".legend")).toBeHidden();
+  });
+
+  test("runs the alternate action, then drops the shift", async ({ page }) => {
+    await press(page, "2nd");
+    await page.locator('[data-keypad] button[data-action="constant"]').click();
+    await expect(expression(page)).toHaveText("(e)");
+    await expect(keypad(page)).not.toHaveAttribute("data-shift", "on");
+  });
+
+  test("2nd pressed twice cancels", async ({ page }) => {
+    await press(page, "2nd", "2nd");
+    await expect(keypad(page)).not.toHaveAttribute("data-shift", "on");
+  });
+
+  test("reaches abs through 2nd on the root key", async ({ page }) => {
+    await press(page, "2nd");
+    await page.locator('[data-keypad] button[data-action="function"]').click();
+    await press(page, "5", "\u00b1", ")", "=");
+    await expect(result(page)).toHaveText("5");
+  });
+
+  test("reaches clear-history through 2nd on MC", async ({ page }) => {
+    await press(page, "1", "+", "1", "=");
+    await expect(page.locator(".history-entry")).toHaveCount(1);
+    await press(page, "2nd");
+    await page.locator('[data-keypad] button[data-action="memory"]').first().click();
+    await expect(page.locator(".history-entry")).toHaveCount(0);
+  });
+});
+
 test.describe("keyboard", () => {
   test("drives the whole calculator", async ({ page }) => {
     await page.keyboard.type("12+3*4");

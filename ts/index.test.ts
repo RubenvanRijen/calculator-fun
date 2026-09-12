@@ -17,11 +17,20 @@ describe("setupCalculator", () => {
   let root: HTMLElement;
   let handle: CalculatorHandle;
 
+  /** Find a button by the label it currently shows. */
   function button(label: string): HTMLButtonElement {
     const found = [...root.querySelectorAll("button")].find(
-      (candidate) => candidate.textContent?.trim() === label
+      (candidate) =>
+        (candidate.querySelector(".legend") ?? candidate).textContent?.trim() === label
     );
     if (!found) throw new Error(`No button labelled "${label}"`);
+    return found;
+  }
+
+  /** Find a key by the action it runs, regardless of its label. */
+  function keyFor(action: string): HTMLButtonElement {
+    const found = root.querySelector<HTMLButtonElement>(`button[data-action="${action}"]`);
+    if (!found) throw new Error(`No key with action "${action}"`);
     return found;
   }
 
@@ -59,19 +68,160 @@ describe("setupCalculator", () => {
   });
 
   describe("the shipped markup", () => {
-    it("has every control the wiring looks for", () => {
+    it("only references actions the registry implements", () => {
+      const keys = [...root.querySelectorAll<HTMLElement>("[data-keypad] button")];
+      expect(keys.length).toBeGreaterThan(0);
+
+      for (const key of keys) {
+        const primary = key.dataset["action"];
+        expect(handle.actionNames, `primary of ${key.textContent}`).toContain(primary);
+
+        const alt = key.dataset["actionAlt"];
+        if (alt !== undefined) {
+          expect(handle.actionNames, `2nd of ${key.textContent}`).toContain(alt);
+        }
+      }
+    });
+
+    it("gives every key a primary legend", () => {
+      for (const key of root.querySelectorAll<HTMLElement>("[data-keypad] button")) {
+        expect(key.querySelector(".legend")?.textContent?.trim()).toBeTruthy();
+      }
+    });
+
+    it("gives every 2nd action its own legend", () => {
+      for (const key of root.querySelectorAll<HTMLElement>("[data-keypad] button[data-action-alt]")) {
+        expect(key.querySelector(".legend-alt")?.textContent?.trim()).toBeTruthy();
+      }
+    });
+
+    it("has every panel control the wiring looks for", () => {
       for (const selector of [
-        "[data-number]", "[data-operation]", "[data-equals]", "[data-delete]",
-        "[data-all-clear]", "[data-sign]", "[data-percent]", "[data-memory]",
-        "[data-square]", "[data-reciprocal]", "[data-function]", "[data-constant]",
-        "[data-open-paren]", "[data-close-paren]", "[data-expression]", "[data-result]",
-        "[data-error]", "[data-memory-indicator]", "[data-paren-indicator]",
+        "[data-expression]", "[data-result]", "[data-error]",
+        "[data-memory-indicator]", "[data-paren-indicator]",
         "[data-history-list]", "[data-history-clear]", "[data-tab]", "[data-panel]",
         "[data-graph-input]", "[data-graph-svg]", "[data-graph-error]",
-        "[data-theme-toggle]", "[data-theme-icon]",
+        "[data-theme-toggle]", "[data-theme-icon]", "[data-keypad]",
       ]) {
         expect(root.querySelector(selector), selector).not.toBeNull();
       }
+    });
+  });
+
+  describe("the 2nd shift layer", () => {
+    const keypad = () => root.querySelector<HTMLElement>("[data-keypad]");
+
+    it("starts unshifted", () => {
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+    });
+
+    it("turns on when 2nd is pressed", () => {
+      press("2nd");
+      expect(keypad()?.dataset["shift"]).toBe("on");
+    });
+
+    it("turns off when 2nd is pressed again", () => {
+      press("2nd", "2nd");
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+    });
+
+    it("runs the alternate action of the next key", () => {
+      press("2nd");
+      keyFor("constant").click();
+      // \u03c0 primary, e alternate -- both already known to the tokenizer.
+      expect(expression()).toBe("(e)");
+    });
+
+    it("clears after a single key, as the hardware does", () => {
+      press("2nd");
+      keyFor("constant").click();
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+      keyFor("constant").click();
+      expect(expression()).toBe("(e)\u03c0");
+    });
+
+    it("falls back to the primary action on a key with no alternate", () => {
+      press("2nd");
+      press("7");
+      expect(expression()).toBe("7");
+    });
+
+    it("still clears the shift after a key with no alternate", () => {
+      press("2nd", "7");
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+    });
+
+    it("reaches clear-history through 2nd on MC", () => {
+      press("1", "+", "1", "=");
+      expect(entries()).toHaveLength(1);
+      press("2nd");
+      keyFor("memory").click();
+      expect(entries()).toHaveLength(0);
+    });
+
+    it("gives a usable value from the 2nd e key next to a digit", () => {
+      press("2");
+      press("2nd");
+      keyFor("constant").click();
+      press("5", "=");
+      expect(result()).toBe("27.1828182846");
+    });
+
+    it("does not latch when the keyboard is used mid-shift", () => {
+      press("2nd");
+      expect(keypad()?.dataset["shift"]).toBe("on");
+      type("5");
+      // A keypress consumes the shift just as a click would.
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+      keyFor("function").click();
+      expect(expression()).toBe("5sqrt(");
+    });
+
+    it("does not latch when a key names an action that does not exist", () => {
+      const stray = keyFor("percent");
+      stray.dataset["actionAlt"] = "no-such-action";
+      press("2nd");
+      stray.click();
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+    });
+
+    // The shift used to survive any click outside the keypad, so a detour to
+    // the history or a tab left the next key running its alternate -- with MC
+    // that silently wiped the history instead of the memory.
+    it("is spent by clicking a history entry", () => {
+      press("1", "+", "1", "=");
+      press("2nd");
+      root.querySelector<HTMLElement>(".history-entry")?.click();
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+    });
+
+    it("is spent by switching tabs", () => {
+      press("2nd");
+      button("\u0192(x)").click();
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+    });
+
+    it("is spent by the theme toggle", () => {
+      press("2nd");
+      root.querySelector<HTMLElement>("[data-theme-toggle]")?.click();
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+    });
+
+    it("does not wipe history when MC follows a detour", () => {
+      press("1", "+", "1", "=");
+      press("7");
+      keyFor("memory").click(); // M... actually MC is the first memory key
+      press("2nd");
+      button("\u0192(x)").click();
+      button("History").click();
+      keyFor("memory").click();
+      expect(entries()).toHaveLength(1);
+    });
+
+    it("reaches abs through 2nd on the root key", () => {
+      press("2nd");
+      keyFor("function").click();
+      expect(expression()).toBe("abs(");
     });
   });
 
@@ -401,6 +551,57 @@ describe("setupCalculator", () => {
     it("throws when the display elements are missing", () => {
       document.body.innerHTML = `<div class="calculator-grid"></div>`;
       expect(() => setupCalculator(document.body)).toThrow(/missing \[data-expression\]/);
+    });
+
+    // Without this the keypad wrapper could be renamed and every key would go
+    // quietly dead, with nothing to say why.
+    it("throws when the keypad wrapper is missing", () => {
+      document.body.innerHTML = MARKUP.replace(" data-keypad", "");
+      expect(() => setupCalculator(document.body)).toThrow(/missing \[data-keypad\]/);
+    });
+
+    it("gives every arg-taking key an argument", () => {
+      const needsArg = ["number", "operation", "function", "constant", "memory"];
+      for (const key of root.querySelectorAll<HTMLElement>("[data-keypad] button")) {
+        const action = key.dataset["action"];
+        if (action !== undefined && needsArg.includes(action)) {
+          expect(key.dataset["arg"], `${action} key`).toBeTruthy();
+        }
+        const alt = key.dataset["actionAlt"];
+        if (alt !== undefined && needsArg.includes(alt)) {
+          expect(key.dataset["argAlt"], `2nd ${alt} key`).toBeTruthy();
+        }
+      }
+    });
+
+    it("does nothing for an arg-taking key whose argument is missing", () => {
+      const key = keyFor("function");
+      delete key.dataset["arg"];
+      key.click();
+      // Previously appended a bare "(".
+      expect(expression()).toBe("");
+    });
+  });
+
+  describe("destroy", () => {
+    // The root click listener outlives the markup, so a stale instance could
+    // otherwise keep writing its own state back to localStorage.
+    it("stops the outside-click listener too", () => {
+      press("1", "+", "1", "=");
+      press("2nd");
+      handle.destroy();
+
+      localStorage.clear();
+      document.body.innerHTML = MARKUP;
+      root = document.body;
+      handle = setupCalculator(root);
+      expect(entries()).toHaveLength(0);
+
+      root.querySelector<HTMLElement>("[data-theme-toggle]")?.click();
+      expect(entries()).toHaveLength(0);
+
+      const saved = localStorage.getItem("calculator-fun.state") ?? "{}";
+      expect(JSON.parse(saved).history ?? []).toHaveLength(0);
     });
   });
 });

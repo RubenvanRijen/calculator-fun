@@ -109,8 +109,8 @@ body {
 
 .calculator-grid {
     display: grid;
-    grid-template-columns: repeat(4, 78px);
-    grid-template-rows: minmax(104px, auto) repeat(8, 56px);
+    grid-template-columns: repeat(5, 66px);
+    grid-template-rows: minmax(104px, auto) repeat(7, 56px);
 }
 
 .calculator-grid>button {
@@ -156,6 +156,36 @@ body {
 
 .span-two {
     grid-column: span 2;
+}
+
+.span-three {
+    grid-column: span 3;
+}
+
+/* --- the 2nd shift layer ---------------------------------------------- */
+
+/* Only the active legend is rendered, so a key's accessible name is whichever
+   label is currently showing rather than both concatenated. */
+.legend-alt {
+    display: none;
+}
+
+.calculator-grid[data-shift="on"] button[data-action-alt] .legend {
+    display: none;
+}
+
+.calculator-grid[data-shift="on"] button[data-action-alt] .legend-alt {
+    display: inline;
+    color: var(--accent);
+}
+
+.key-second {
+    font-size: 1rem;
+}
+
+.calculator-grid[data-shift="on"] .key-second {
+    background-color: var(--accent);
+    color: var(--equals-text);
 }
 
 /* --- display ---------------------------------------------------------- */
@@ -447,8 +477,8 @@ body {
 
 @media (max-width: 640px) {
     .calculator-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-template-rows: minmax(104px, auto) repeat(8, 52px);
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-rows: minmax(104px, auto) repeat(7, 52px);
         width: min(100%, 340px);
     }
 

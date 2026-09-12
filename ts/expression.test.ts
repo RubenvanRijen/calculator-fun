@@ -106,6 +106,75 @@ describe("functions and constants", () => {
     expect(() => evaluateString("foo(2)")).toThrow(/Unknown name/);
   });
 
+  // The scanner used to grab every adjacent letter as one word, so two
+  // constants side by side read as a single unknown name.
+  describe("adjacent names", () => {
+    it.each([
+      ["\u03c0\u03c0", Math.PI * Math.PI],
+      ["e\u03c0", Math.E * Math.PI],
+      ["\u03c0e", Math.PI * Math.E],
+      ["ee", Math.E * Math.E],
+    ])("reads %j as two constants", (input, expected) => {
+      expect(evaluateString(input)).toBeCloseTo(expected);
+    });
+
+    it("reads a constant next to the variable", () => {
+      expect(evaluateString("\u03c0x", 2)).toBeCloseTo(Math.PI * 2);
+    });
+
+    it("still rejects a genuinely unknown name", () => {
+      expect(() => evaluateString("wobble")).toThrow(/Unknown name "wobble"/);
+    });
+
+    // The error used to name the leftover fragment after known prefixes had
+    // been eaten: "sinh" reported 'Unknown name "h"'.
+    it.each([
+      ["sinh(1)", "sinh"],
+      ["exp(2)", "exp"],
+      ["cosec(1)", "cosec"],
+      ["xyz", "xyz"],
+    ])("names the whole word %j in the error", (input, word) => {
+      expect(() => evaluateString(input)).toThrow(`Unknown name "${word}"`);
+    });
+
+    // Splitting a letter run into names must not turn a typo into a silent
+    // answer: "cose(x)" decomposes to cos + e, which used to evaluate as
+    // cos(e)*x rather than being rejected.
+    it.each(["cose(x)", "tane(2)", "sine", "abse(4)", "lne(3)"])(
+      "rejects the typo %j rather than decomposing it",
+      (input) => {
+        expect(() => evaluateString(input, 2)).toThrow(/Unknown name/);
+      }
+    );
+
+    it("says what is missing when a function has no bracket", () => {
+      expect(() => evaluateString("sqrt")).toThrow('Expected ( after "sqrt"');
+      expect(() => evaluateString("2sin")).toThrow('Expected ( after "sin"');
+    });
+
+    // Requiring the bracket must not reject one that is merely a space away.
+    it.each([
+      ["sin (x)", Math.sin(1)],
+      ["sqrt (9)", 3],
+      ["ln (2)", Math.LN2],
+      ["sqrt  (  9  )", 3],
+    ])("accepts whitespace before the bracket in %j", (input, expected) => {
+      expect(evaluateString(input, 1)).toBeCloseTo(expected);
+    });
+
+    it("still accepts every legitimate function call", () => {
+      expect(evaluateString("sin(0)")).toBe(0);
+      expect(evaluateString("2sqrt(9)")).toBe(6);
+      expect(evaluateString("sqrt(abs(-16))")).toBe(4);
+      expect(evaluateString("\u03c0sqrt(4)")).toBeCloseTo(Math.PI * 2);
+    });
+
+    it("does not let a short name shadow a longer one", () => {
+      // "e" must not swallow the start of a longer name.
+      expect(evaluateString("sqrt(4)")).toBe(2);
+    });
+  });
+
   // A function used to stay on the operator stack past its own closing
   // bracket and swallow whatever came next, so sqrt(9)+1 evaluated as
   // sqrt(9+1). These all pin the bracket closing where it belongs.
@@ -180,6 +249,24 @@ describe("tokenize", () => {
 
 // Results round-trip through text, so an exponential result must read back
 // as one number rather than a mantissa times Euler's constant.
+// The e key inserts "(e)" precisely so a constant next to digits cannot be
+// mistaken for an exponent.
+describe("Euler's constant beside digits", () => {
+  it.each([
+    ["2(e)5", 2 * Math.E * 5],
+    ["(e)5", Math.E * 5],
+    ["2(e)", 2 * Math.E],
+    ["(e)", Math.E],
+    ["(e)(e)", Math.E * Math.E],
+  ])("%s is a constant, not an exponent", (input, expected) => {
+    expect(evaluateString(input)).toBeCloseTo(expected);
+  });
+
+  it("leaves genuine scientific notation alone", () => {
+    expect(evaluateString("2e5")).toBe(200000);
+  });
+});
+
 describe("scientific notation", () => {
   it.each([
     ["1e3", 1000],

@@ -30,7 +30,7 @@ const FUNCTIONS: Record<FunctionName, (value: number) => number> = {
   log: Math.log10,
 };
 
-const FUNCTION_NAMES = Object.keys(FUNCTIONS) as FunctionName[];
+export const FUNCTION_NAMES = Object.keys(FUNCTIONS) as FunctionName[];
 
 const CONSTANTS: Readonly<Record<string, number>> = {
   pi: Math.PI,
@@ -40,9 +40,38 @@ const CONSTANTS: Readonly<Record<string, number>> = {
 
 const OPERATIONS = ["+", "-", "*", "÷", "^"] as const satisfies readonly Operation[];
 
+/**
+ * Every name the tokenizer recognises, longest first so that a short name can
+ * never shadow a longer one that starts with it (e.g. "e" before "exp").
+ */
+const KNOWN_NAMES: readonly string[] = [
+  ...FUNCTION_NAMES,
+  ...Object.keys(CONSTANTS),
+  "x",
+].sort((a, b) => b.length - a.length);
+
 /** Narrow an arbitrary string to one of the supported operations. */
 export function isOperation(value: string): value is Operation {
   return (OPERATIONS as readonly string[]).includes(value);
+}
+
+/**
+ * Split a run of letters into known names, longest match first. Returns null
+ * when any part of the run is not a name, so the caller can report the whole
+ * word instead of a fragment of it.
+ */
+function splitIntoNames(run: string): string[] | null {
+  const names: string[] = [];
+  let rest = run.toLowerCase();
+
+  while (rest.length > 0) {
+    const match = KNOWN_NAMES.find((candidate) => rest.startsWith(candidate));
+    if (match === undefined) return null;
+    names.push(match);
+    rest = rest.slice(match.length);
+  }
+
+  return names;
 }
 
 /**
@@ -138,34 +167,54 @@ export function tokenize(input: string): Token[] {
       continue;
     }
 
-    const word = /^[a-zA-Zπ]+/.exec(input.slice(index))?.[0] ?? "";
-    if (word !== "") {
-      const lower = word.toLowerCase();
+    // Take the whole run of letters, then try to split it into known names.
+    // Splitting lets "ππ" and "eπ" read as two constants side by side; taking
+    // the whole run first means a failure can name the word the user actually
+    // typed ("sinh") rather than the leftover fragment ("h").
+    const run = /^[a-zA-Zπ]+/.exec(input.slice(index))?.[0] ?? "";
+    if (run !== "") {
+      const names = splitIntoNames(run);
+      if (names === null) throw new Error(`Unknown name "${run}"`);
 
-      const functionName = FUNCTION_NAMES.find((name) => name === lower);
-      if (functionName !== undefined) {
-        implyMultiplication();
-        tokens.push({ kind: TokenKind.Function, name: functionName });
-        index += word.length;
-        continue;
+      // A function owns the bracket that follows it, so it has to be the last
+      // name in the run and that bracket has to be there. Without this check a
+      // typo that happens to decompose -- "cose(x)" -> cos, e -- would quietly
+      // evaluate as cos(e)*x instead of being rejected.
+      const functionAt = names.findIndex((name) =>
+        (FUNCTION_NAMES as readonly string[]).includes(name)
+      );
+      if (functionAt !== -1) {
+        const name = names[functionAt] ?? "";
+        if (functionAt !== names.length - 1) {
+          throw new Error(`Unknown name "${run}"`);
+        }
+        // Skip whitespace: "sin (x)" is a bracket one space away, not a
+        // missing one.
+        if (!/^\s*\(/.test(input.slice(index + run.length))) {
+          throw new Error(`Expected ( after "${name}"`);
+        }
       }
 
-      const constant = CONSTANTS[lower];
-      if (constant !== undefined) {
+      for (const name of names) {
         implyMultiplication();
+        const functionName = FUNCTION_NAMES.find((candidate) => candidate === name);
+        if (functionName !== undefined) {
+          tokens.push({ kind: TokenKind.Function, name: functionName });
+          continue;
+        }
+        if (name === "x") {
+          tokens.push({ kind: TokenKind.Variable });
+          continue;
+        }
+        const constant = CONSTANTS[name];
+        // KNOWN_NAMES is built from these three sources, so this is
+        // unreachable -- but a throw beats silently evaluating to zero.
+        if (constant === undefined) throw new Error(`Unknown name "${name}"`);
         tokens.push({ kind: TokenKind.Number, value: constant });
-        index += word.length;
-        continue;
       }
 
-      if (lower === "x") {
-        implyMultiplication();
-        tokens.push({ kind: TokenKind.Variable });
-        index += word.length;
-        continue;
-      }
-
-      throw new Error(`Unknown name "${word}"`);
+      index += run.length;
+      continue;
     }
 
     throw new Error(`Unexpected character "${char}"`);

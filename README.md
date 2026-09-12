@@ -87,7 +87,7 @@ saved state" rather than breaking.
 | `(` `)` | parentheses |
 | `%` | percent |
 | `Enter` or `=` | compute |
-| `Backspace` | delete last character |
+| `Backspace` | undo the last keypress |
 | `Escape` | clear |
 
 The matching on-screen key flashes, so the mapping is visible. A focused button
@@ -98,6 +98,19 @@ reads as "percent of the first operand", so `50 + 10 %` is `55`, not `50.1`.
 Inside `*` or `÷` there is no sensible base, so it is a plain division by 100.
 
 **Scientific keys**: `√`, `x²`, `1/x`, `xⁿ`, `π`, plus `±` to flip a sign.
+
+**A `2nd` shift layer**, as on the reference hardware. Pressing `2nd` swaps the
+legends of the keys that carry an alternate, and the shift is spent by the very
+next action -- a key, a keystroke, or a click anywhere else on the page:
+
+| Key | `2nd` gives |
+| --- | --- |
+| `√` | `abs(` |
+| `π` | `e` (Euler's constant, inserted as `(e)` so it cannot read as an exponent) |
+| `MC` | `CH`, clear history |
+
+`DEL` undoes one *keypress*, not one character, so a single press removes the
+whole of `sqrt(` or `(e)`.
 
 **Memory** (`MC` `MR` `M+` `M-`) with an `M` indicator on the display while
 memory holds a non-zero value. Memory survives `AC`.

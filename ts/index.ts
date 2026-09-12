@@ -40,6 +40,13 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     );
   }
 
+  // Every key is wired through this wrapper, so its absence would leave a page
+  // where nothing responds and nothing explains why.
+  const keypad = query("[data-keypad]");
+  if (!keypad) {
+    throw new Error("Calculator markup is missing [data-keypad].");
+  }
+
   const calculator = new Calculator();
 
   // --- persistence & theme ------------------------------------------------
@@ -61,7 +68,9 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   // --- display ------------------------------------------------------------
   const buttonsByLabel = new Map<string, HTMLElement>();
   for (const button of root.querySelectorAll<HTMLElement>("button")) {
-    const label = button.textContent?.trim();
+    // Keypad keys carry their primary label in .legend and an optional 2nd
+    // label in .legend-alt; other buttons are plain text.
+    const label = (button.querySelector(".legend") ?? button).textContent?.trim();
     if (label && !buttonsByLabel.has(label)) buttonsByLabel.set(label, button);
   }
 
@@ -124,6 +133,94 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   }
 
   // --- keypad -------------------------------------------------------------
+  // Every key declares `data-action` (plus an optional `data-arg`), so adding a
+  // key is a markup change rather than another listener registration. A key may
+  // also declare `data-action-alt`, reached through the `2nd` shift.
+  const ACTIONS: Record<string, (arg: string | undefined) => void> = {
+    number: (arg) => { if (arg) calculator.appendNumber(arg); },
+    operation: (arg) => {
+      if (arg !== undefined && isOperation(arg)) calculator.chooseOperation(arg);
+    },
+    // A missing data-arg is a markup mistake; doing nothing beats appending a
+    // stray "(" or an empty constant.
+    function: (arg) => { if (arg) calculator.appendFunction(arg); },
+    constant: (arg) => { if (arg) calculator.appendConstant(arg); },
+    memory: (arg) => {
+      switch (arg) {
+        case "add": calculator.memoryAdd(); break;
+        case "subtract": calculator.memorySubtract(); break;
+        case "recall": calculator.memoryRecall(); break;
+        case "clear": calculator.memoryClear(); break;
+      }
+    },
+    equals: () => calculator.compute(),
+    clear: () => calculator.clear(),
+    delete: () => calculator.delete(),
+    sign: () => calculator.toggleSign(),
+    percent: () => calculator.percent(),
+    square: () => calculator.square(),
+    reciprocal: () => calculator.reciprocal(),
+    "open-paren": () => calculator.openParen(),
+    "close-paren": () => calculator.closeParen(),
+    "clear-history": () => calculator.clearHistory(),
+    second: () => setShift(!shifted),
+  };
+
+  /** Names the markup is allowed to use. Exported shape for the tests to check. */
+  const ACTION_NAMES = new Set(Object.keys(ACTIONS));
+
+  let shifted = false;
+
+  // An arrow const rather than a function declaration: that is what keeps the
+  // non-null narrowing of `keypad` from the guard above alive in here.
+  const setShift = (value: boolean): void => {
+    shifted = value;
+    keypad.dataset["shift"] = value ? "on" : "off";
+  };
+
+  /** Which action a key runs right now, given the shift state. */
+  function resolveAction(button: HTMLElement): { name: string; arg: string | undefined } {
+    const alt = button.dataset["actionAlt"];
+    if (shifted && alt !== undefined) {
+      return { name: alt, arg: button.dataset["argAlt"] };
+    }
+    return { name: button.dataset["action"] ?? "", arg: button.dataset["arg"] };
+  }
+
+  // One delegated listener rather than one per key.
+  keypad.addEventListener("click", (event) => {
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("button[data-action]")
+      : null;
+    if (!target || !keypad.contains(target)) return;
+
+    const { name, arg } = resolveAction(target);
+    const handler = ACTIONS[name];
+
+    handler?.(arg);
+    // The shift lasts for exactly one key, as it does on the hardware. This
+    // runs even when the action is unknown, so a bad `data-action` cannot
+    // leave the keypad latched in its alternate layer.
+    if (name !== "second") setShift(false);
+    updateDisplay();
+  });
+
+  // Anything clicked outside the keypad -- a tab, a history entry, the theme
+  // toggle, a graph chip -- also spends a pending 2nd. Otherwise the shift
+  // stays latched across the detour and the next key runs its alternate,
+  // which for MC means wiping the history instead of the memory.
+  function handleRootClick(event: Event): void {
+    if (!shifted) return;
+    const inKeypad =
+      event.target instanceof Element && event.target.closest("[data-keypad]") !== null;
+    if (inKeypad) return;
+    setShift(false);
+    updateDisplay();
+  }
+
+  root.addEventListener("click", handleRootClick);
+
+  // Panel controls sit outside the keypad and keep their own wiring.
   const on = (selector: string, handler: (element: HTMLElement) => void): void => {
     for (const element of root.querySelectorAll<HTMLElement>(selector)) {
       element.addEventListener("click", () => {
@@ -133,36 +230,6 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     }
   };
 
-  on("[data-number]", (button) =>
-    calculator.appendNumber(button.dataset["number"] ?? button.textContent ?? "")
-  );
-  on("[data-operation]", (button) => {
-    const operation = button.dataset["operation"] ?? "";
-    if (isOperation(operation)) calculator.chooseOperation(operation);
-  });
-  on("[data-memory]", (button) => {
-    switch (button.dataset["memory"]) {
-      case "add": calculator.memoryAdd(); break;
-      case "subtract": calculator.memorySubtract(); break;
-      case "recall": calculator.memoryRecall(); break;
-      case "clear": calculator.memoryClear(); break;
-    }
-  });
-  on("[data-function]", (button) =>
-    calculator.appendFunction(button.dataset["function"] ?? "")
-  );
-  on("[data-constant]", (button) =>
-    calculator.appendConstant(button.dataset["constant"] ?? "")
-  );
-  on("[data-equals]", () => calculator.compute());
-  on("[data-all-clear]", () => calculator.clear());
-  on("[data-delete]", () => calculator.delete());
-  on("[data-sign]", () => calculator.toggleSign());
-  on("[data-percent]", () => calculator.percent());
-  on("[data-square]", () => calculator.square());
-  on("[data-reciprocal]", () => calculator.reciprocal());
-  on("[data-open-paren]", () => calculator.openParen());
-  on("[data-close-paren]", () => calculator.closeParen());
   on("[data-history-clear]", () => calculator.clearHistory());
 
   // --- theme toggle -------------------------------------------------------
@@ -229,6 +296,9 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     if (label === null) return;
 
     event.preventDefault();
+    // Typing is a keypress too, so it consumes a pending 2nd just as a click
+    // would; otherwise the shift stays latched and catches the next click.
+    setShift(false);
     flash(label);
     updateDisplay();
   }
@@ -387,7 +457,13 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
 
   return {
     calculator,
-    destroy: () => doc.removeEventListener("keydown", handleKeydown),
+    actionNames: ACTION_NAMES,
+    destroy: () => {
+      doc.removeEventListener("keydown", handleKeydown);
+      // `root` outlives the markup (it is the document or its body), so a
+      // stale handler would keep writing this instance's state to storage.
+      root.removeEventListener("click", handleRootClick);
+    },
   };
 }
 

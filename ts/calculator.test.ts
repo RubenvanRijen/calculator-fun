@@ -446,6 +446,30 @@ describe("regressions", () => {
     expect(calculator.resultDisplay).toBe("");
   });
 
+  // A key that inserts several characters must take one DEL to undo, not one
+  // DEL per character -- otherwise the paren badge and the preview disagree.
+  it("undoes the (e) key with a single DEL", () => {
+    type(calculator, ["2"]);
+    calculator.appendConstant("(e)");
+    expect(calculator.expression).toBe("2(e)");
+    type(calculator, ["DEL"]);
+    expect(calculator.expression).toBe("2");
+    expect(calculator.openParenCount).toBe(0);
+  });
+
+  it("undoes a function key with a single DEL", () => {
+    type(calculator, ["\u221a"]);
+    expect(calculator.expression).toBe("sqrt(");
+    type(calculator, ["DEL"]);
+    expect(calculator.expression).toBe("");
+    expect(calculator.openParenCount).toBe(0);
+  });
+
+  it("still deletes one character of an ordinary number", () => {
+    type(calculator, ["1", "2", "3", "DEL"]);
+    expect(calculator.expression).toBe("12");
+  });
+
   it("ignores an operator straight after an opening bracket", () => {
     type(calculator, ["(", "+", "3", ")", "="]);
     // Was "(+3)", which could never evaluate.

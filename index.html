@@ -19,7 +19,7 @@
     </header>
 
     <main class="app">
-        <div class="calculator-grid">
+        <div class="calculator-grid" data-keypad>
             <div class="output">
                 <div class="output-meta">
                     <span data-memory-indicator class="badge" hidden>M</span>
@@ -30,44 +30,38 @@
                 <div data-error class="error" role="alert" hidden></div>
             </div>
 
-            <button data-function="sqrt" class="key-small">√</button>
-            <button data-square class="key-small">x²</button>
-            <button data-reciprocal class="key-small">1/x</button>
-            <button data-constant="π" class="key-small">π</button>
-
-            <button data-memory="clear" class="key-small">MC</button>
-            <button data-memory="recall" class="key-small">MR</button>
-            <button data-memory="add" class="key-small">M+</button>
-            <button data-memory="subtract" class="key-small">M−</button>
-
-            <button data-open-paren class="key-small">(</button>
-            <button data-close-paren class="key-small">)</button>
-            <button data-all-clear class="key-action">AC</button>
-            <button data-delete class="key-action">DEL</button>
-
-            <button data-number="7">7</button>
-            <button data-number="8">8</button>
-            <button data-number="9">9</button>
-            <button data-operation="÷" class="key-operator">÷</button>
-
-            <button data-number="4">4</button>
-            <button data-number="5">5</button>
-            <button data-number="6">6</button>
-            <button data-operation="*" class="key-operator">*</button>
-
-            <button data-number="1">1</button>
-            <button data-number="2">2</button>
-            <button data-number="3">3</button>
-            <button data-operation="-" class="key-operator">-</button>
-
-            <button data-sign>±</button>
-            <button data-number="0">0</button>
-            <button data-number=".">.</button>
-            <button data-operation="+" class="key-operator">+</button>
-
-            <button data-operation="^" class="key-small">xⁿ</button>
-            <button data-percent>%</button>
-            <button data-equals class="key-equals span-two">=</button>
+            <button data-action="second" class="key-second"><span class="legend">2nd</span></button>
+            <button data-action="function" data-arg="sqrt" data-action-alt="function" data-arg-alt="abs" class="key-small"><span class="legend">√</span><span class="legend-alt">abs</span></button>
+            <button data-action="square" class="key-small"><span class="legend">x²</span></button>
+            <button data-action="reciprocal" class="key-small"><span class="legend">1/x</span></button>
+            <button data-action="constant" data-arg="π" data-action-alt="constant" data-arg-alt="(e)" class="key-small"><span class="legend">π</span><span class="legend-alt">e</span></button>
+            <button data-action="memory" data-arg="clear" data-action-alt="clear-history" class="key-small"><span class="legend">MC</span><span class="legend-alt">CH</span></button>
+            <button data-action="memory" data-arg="recall" class="key-small"><span class="legend">MR</span></button>
+            <button data-action="memory" data-arg="add" class="key-small"><span class="legend">M+</span></button>
+            <button data-action="memory" data-arg="subtract" class="key-small"><span class="legend">M−</span></button>
+            <button data-action="operation" data-arg="^" class="key-small"><span class="legend">xⁿ</span></button>
+            <button data-action="open-paren" class="key-small"><span class="legend">(</span></button>
+            <button data-action="close-paren" class="key-small"><span class="legend">)</span></button>
+            <button data-action="clear" class="key-action"><span class="legend">AC</span></button>
+            <button data-action="delete" class="key-action"><span class="legend">DEL</span></button>
+            <button data-action="operation" data-arg="÷" class="key-operator"><span class="legend">÷</span></button>
+            <button data-action="number" data-arg="7"><span class="legend">7</span></button>
+            <button data-action="number" data-arg="8"><span class="legend">8</span></button>
+            <button data-action="number" data-arg="9"><span class="legend">9</span></button>
+            <button data-action="percent"><span class="legend">%</span></button>
+            <button data-action="operation" data-arg="*" class="key-operator"><span class="legend">*</span></button>
+            <button data-action="number" data-arg="4"><span class="legend">4</span></button>
+            <button data-action="number" data-arg="5"><span class="legend">5</span></button>
+            <button data-action="number" data-arg="6"><span class="legend">6</span></button>
+            <button data-action="sign"><span class="legend">±</span></button>
+            <button data-action="operation" data-arg="-" class="key-operator"><span class="legend">-</span></button>
+            <button data-action="number" data-arg="1"><span class="legend">1</span></button>
+            <button data-action="number" data-arg="2"><span class="legend">2</span></button>
+            <button data-action="number" data-arg="3"><span class="legend">3</span></button>
+            <button data-action="number" data-arg="."><span class="legend">.</span></button>
+            <button data-action="operation" data-arg="+" class="key-operator"><span class="legend">+</span></button>
+            <button data-action="number" data-arg="0" class="span-two"><span class="legend">0</span></button>
+            <button data-action="equals" class="key-equals span-three"><span class="legend">=</span></button>
         </div>
 
         <aside class="panel">
@@ -126,7 +120,10 @@
     <p class="hint">
         Keyboard: digits, <kbd>+</kbd> <kbd>-</kbd> <kbd>*</kbd> <kbd>/</kbd> <kbd>^</kbd>
         <kbd>(</kbd> <kbd>)</kbd> <kbd>%</kbd>, <kbd>Enter</kbd> to equal,
-        <kbd>Backspace</kbd> to delete, <kbd>Esc</kbd> to clear.
+        <kbd>Backspace</kbd> to undo a keypress, <kbd>Esc</kbd> to clear.
+        <br>
+        <kbd>2nd</kbd> reaches the alternate on keys that show one:
+        &radic;&nbsp;&rarr;&nbsp;abs, &pi;&nbsp;&rarr;&nbsp;e, MC&nbsp;&rarr;&nbsp;clear history.
     </p>
 </body>
 
