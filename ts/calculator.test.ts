@@ -385,6 +385,67 @@ describe("Calculator", () => {
   });
 });
 
+// Each of these was a real defect found in review.
+describe("regressions", () => {
+  let calculator: Calculator;
+  beforeEach(() => { calculator = new Calculator(); });
+
+  it("carries a very large result into the next sum intact", () => {
+    type(calculator, [..."99999999999", "*", ..."99999999999", "="]);
+    const big = calculator.resultDisplay;
+    type(calculator, ["+", "1", "="]);
+    // Was 49.182818284, because "e+21" parsed as Euler's constant.
+    expect(calculator.resultDisplay).toBe(big);
+  });
+
+  it("displays a very small result rather than rounding it to 0", () => {
+    type(calculator, ["1", "÷", ..."10000000", "="]);
+    expect(calculator.resultDisplay).toBe("1e-7");
+  });
+
+  it("recalls an exponential history result without corrupting it", () => {
+    type(calculator, ["1", "÷", ..."10000000", "="]);
+    const stored = calculator.history[0]?.result ?? "";
+    calculator.recall(stored);
+    type(calculator, ["*", "1", "0", "="]);
+    expect(calculator.resultDisplay).toBe("0.000001");
+  });
+
+  it("starts afresh when % follows =, rather than rewriting the result", () => {
+    type(calculator, ["5", "+", "3", "="]);
+    type(calculator, ["%"]);
+    // Was 5.15: percent reached back into the completed expression.
+    expect(calculator.resultDisplay).toBe("0.08");
+  });
+
+  it("never shows a preview belonging to an expression that no longer exists", () => {
+    type(calculator, ["9", "+", "5"]);
+    expect(calculator.resultDisplay).toBe("14");
+    type(calculator, ["DEL"]);
+    // Was still 14 while the expression line read "9 +".
+    expect(calculator.expressionDisplay).toBe("9 +");
+    expect(calculator.resultDisplay).toBe("9");
+  });
+
+  it("banks the live value, not a stale one, into memory", () => {
+    type(calculator, ["9", "+", "5", "DEL"]);
+    calculator.memoryAdd();
+    expect(calculator.memory).toBe(9);
+  });
+
+  it("blanks the preview when nothing valid has been typed", () => {
+    type(calculator, ["("]);
+    expect(calculator.resultDisplay).toBe("");
+  });
+
+  it("ignores an operator straight after an opening bracket", () => {
+    type(calculator, ["(", "+", "3", ")", "="]);
+    // Was "(+3)", which could never evaluate.
+    expect(calculator.error).toBeNull();
+    expect(calculator.resultDisplay).toBe("3");
+  });
+});
+
 describe("formatExpression", () => {
   it.each([
     ["12+3*4", "12 + 3 * 4"],
@@ -418,6 +479,8 @@ describe("formatOperand", () => {
     ["-1000", "-1,000"],
     ["1000.5", "1,000.5"],
     ["1.50", "1.50"],
+    ["1e-7", "1e-7"],
+    ["9.9999999998e+21", "9.9999999998e+21"],
   ])("formats %j as %j", (input, expected) => {
     expect(formatOperand(input)).toBe(expected);
   });

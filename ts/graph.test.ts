@@ -85,4 +85,23 @@ describe("plot", () => {
   it("respects the sample count", () => {
     expect(allPoints(plot("x", 0, 1, 10))).toHaveLength(10);
   });
+
+  describe("regressions", () => {
+    it.each([0, 1, -5])("still plots a line with a sample count of %s", (samples) => {
+      const result = plot("x", -10, 10, samples);
+      expect(result.error).toBeNull();
+      expect(allPoints(result).every((p) => Number.isFinite(p.y))).toBe(true);
+    });
+
+    it("explains a function that is undefined across the whole range", () => {
+      const result = plot("sqrt(x)", -10, -1);
+      expect(result.segments).toHaveLength(0);
+      // Was a blank chart with no message at all.
+      expect(result.error).toBe("Not defined in this range");
+    });
+
+    it("still reports a genuinely broken expression differently", () => {
+      expect(plot("x^^2", -10, 10).error).not.toBe("Not defined in this range");
+    });
+  });
 });

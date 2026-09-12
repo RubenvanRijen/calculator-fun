@@ -326,6 +326,29 @@ describe("setupCalculator", () => {
       expect(paths().length).toBeGreaterThan(0);
     });
 
+    it("falls back to the default range when a bound is cleared", () => {
+      const min = root.querySelector<HTMLInputElement>("[data-graph-min]");
+      const max = root.querySelector<HTMLInputElement>("[data-graph-max]");
+      const error = root.querySelector<HTMLElement>("[data-graph-error]");
+
+      // An emptied number input reads as "", which Number() turns into 0 --
+      // clearing both used to collapse the range and report a bogus error.
+      if (min) min.value = "";
+      min?.dispatchEvent(new Event("input", { bubbles: true }));
+      if (max) max.value = "";
+      max?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      expect(error?.hidden).toBe(true);
+      expect(paths().length).toBeGreaterThan(0);
+    });
+
+    it("ignores a non-numeric bound", () => {
+      const min = root.querySelector<HTMLInputElement>("[data-graph-min]");
+      if (min) min.value = "abc";
+      min?.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(root.querySelector<HTMLElement>("[data-graph-error]")?.hidden).toBe(true);
+    });
+
     it("respects the x range", () => {
       const min = root.querySelector<HTMLInputElement>("[data-graph-min]");
       const before = paths()[0]?.getAttribute("d");

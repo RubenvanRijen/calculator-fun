@@ -37,11 +37,14 @@ export function plot(
     return { ...EMPTY, error: message };
   }
 
-  const step = (xMax - xMin) / (samples - 1);
+  // Two points is the fewest that can describe a line; fewer would divide by
+  // zero below and yield NaN for every x.
+  const count = Math.max(2, Math.floor(samples));
+  const step = (xMax - xMin) / (count - 1);
   const sampled: (PlotPoint | null)[] = [];
   let evaluated = 0;
 
-  for (let index = 0; index < samples; index += 1) {
+  for (let index = 0; index < count; index += 1) {
     const x = xMin + index * step;
     try {
       const y = evaluateRpn(rpn, x);
@@ -77,7 +80,13 @@ export function plot(
   if (current.length > 1) segments.push(current);
 
   if (segments.length === 0) {
-    return { ...EMPTY, error: evaluated === 0 ? "Invalid expression" : null };
+    // Distinguish "this expression is broken" from "it is simply undefined
+    // here", so sqrt(x) over a negative range explains itself rather than
+    // drawing a blank chart.
+    return {
+      ...EMPTY,
+      error: evaluated === 0 ? "Invalid expression" : "Not defined in this range",
+    };
   }
 
   let yMin = Infinity;

@@ -118,7 +118,9 @@ export class Calculator {
       this.expression = this.#result;
       this.#justComputed = false;
     }
-    if (this.expression === "") return;
+    // A trailing "(" has nothing to operate on, so "(" then "+" would leave
+    // "(+", which can never evaluate.
+    if (this.expression === "" || this.expression.endsWith("(")) return;
 
     // Replace a trailing operator rather than stacking two.
     if (this.#endsWithOperator()) {
@@ -217,6 +219,10 @@ export class Calculator {
    */
   percent(): void {
     this.error = null;
+    if (this.#justComputed && this.#result !== null) {
+      this.expression = this.#result;
+      this.#justComputed = false;
+    }
 
     const match = /(\d*\.?\d+)$/.exec(this.expression);
     if (match?.[1] === undefined) return;
@@ -351,12 +357,27 @@ export class Calculator {
     return Math.max(depth, 0);
   }
 
-  /** Re-evaluate for the live preview, keeping the last good value if not yet valid. */
+  /**
+   * Re-evaluate for the live preview. A half-typed tail such as "9+" is
+   * previewed as "9" rather than left showing the previous expression's
+   * value, which would otherwise go stale after DEL.
+   */
   #refreshPreview(): void {
     this.#justComputed = false;
-    const value = this.#tryEvaluate(balanceParentheses(this.expression));
-    if (value !== null) this.#preview = value;
-    if (this.expression === "") this.#preview = "";
+    if (this.expression === "") {
+      this.#preview = "";
+      return;
+    }
+    const whole = balanceParentheses(this.expression);
+    const withoutTail = balanceParentheses(this.expression.replace(/[+\-*÷^]+$/, ""));
+    for (const candidate of [whole, withoutTail]) {
+      const value = this.#tryEvaluate(candidate);
+      if (value !== null) {
+        this.#preview = value;
+        return;
+      }
+    }
+    this.#preview = "";
   }
 
   #tryEvaluate(expression: string): string | null {
@@ -414,6 +435,10 @@ export function formatExpression(expression: string): string {
  */
 export function formatOperand(operand: string): string {
   if (operand === "") return "";
+
+  // Exponential form has no integer/decimal split to group, and grouping it
+  // would render 1e-7 as "0". Show it as it is.
+  if (/[eE]/.test(operand)) return operand;
 
   // noUncheckedIndexedAccess types both halves as `string | undefined`, which
   // is what lets the trailing-decimal case below be handled honestly.

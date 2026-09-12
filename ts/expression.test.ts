@@ -178,6 +178,35 @@ describe("tokenize", () => {
   });
 });
 
+// Results round-trip through text, so an exponential result must read back
+// as one number rather than a mantissa times Euler's constant.
+describe("scientific notation", () => {
+  it.each([
+    ["1e3", 1000],
+    ["1e-7", 1e-7],
+    ["9.9999999998e+21", 9.9999999998e21],
+    ["1e-7*10", 1e-6],
+    ["2e3+1", 2001],
+    [".5e3", 500],
+  ])("%s = %s", (input, expected) => {
+    expect(evaluateString(input)).toBeCloseTo(expected, 12);
+  });
+
+  it("still reads a bare e as Euler's constant", () => {
+    expect(evaluateString("2e")).toBeCloseTo(2 * Math.E);
+  });
+
+  it("still multiplies by a bare e after a bracket", () => {
+    expect(evaluateString("(1+1)e")).toBeCloseTo(2 * Math.E);
+  });
+});
+
+describe("two numbers in a row", () => {
+  it.each(["1.2.3", "1 2", "3.4 5"])("rejects %j", (input) => {
+    expect(() => evaluateString(input)).toThrow(/Unexpected number/);
+  });
+});
+
 describe("isOperation", () => {
   it.each(["+", "-", "*", "÷", "^"])("accepts %s", (value) => {
     expect(isOperation(value)).toBe(true);

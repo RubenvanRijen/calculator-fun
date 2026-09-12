@@ -268,8 +268,8 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     if (!graphSvg) return;
 
     const expression = graphInput?.value ?? "";
-    const xMin = Number(graphMin?.value ?? -10);
-    const xMax = Number(graphMax?.value ?? 10);
+    const xMin = readNumber(graphMin, -10);
+    const xMax = readNumber(graphMax, 10);
     const result = plot(expression, xMin, xMax);
 
     lastPlot = result;
@@ -389,6 +389,17 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     calculator,
     destroy: () => doc.removeEventListener("keydown", handleKeydown),
   };
+}
+
+/**
+ * An emptied <input type="number"> reads as "", not null, so `??` would never
+ * reach the fallback and Number("") would silently become 0.
+ */
+function readNumber(input: HTMLInputElement | null, fallback: number): number {
+  const raw = input?.value.trim();
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 /** Short, readable numbers for the trace readout. */

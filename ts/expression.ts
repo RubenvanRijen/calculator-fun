@@ -90,10 +90,21 @@ export function tokenize(input: string): Token[] {
     }
 
     if (/[0-9.]/.test(char)) {
-      const match = /^[0-9]*\.?[0-9]*/.exec(input.slice(index));
+      // The exponent part matters because results round-trip through text:
+      // 1e-7 and 9.9999999998e+21 must read back as one number, not as a
+      // mantissa multiplied by Euler's constant.
+      const match = /^[0-9]*\.?[0-9]*(?:[eE][+-]?[0-9]+)?/.exec(input.slice(index));
       const literal = match?.[0] ?? "";
       const value = parseFloat(literal);
       if (isNaN(value)) throw new Error(`Cannot read "${literal}"`);
+
+      // Two numbers in a row is never an implied multiplication -- it means
+      // something like "1.2.3", which should be rejected rather than guessed at.
+      const previous = tokens[tokens.length - 1];
+      if (previous?.kind === TokenKind.Number) {
+        throw new Error("Unexpected number");
+      }
+
       implyMultiplication();
       tokens.push({ kind: TokenKind.Number, value });
       index += literal.length;
