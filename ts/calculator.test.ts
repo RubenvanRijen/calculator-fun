@@ -189,6 +189,9 @@ describe("Calculator", () => {
 
     it("takes a reciprocal", () => {
       type(calculator, ["4", "1/x", "="]);
+      // The question had no decimal point, so neither does the answer.
+      expect(calculator.resultDisplay).toBe("1/4");
+      calculator.toggleExact();
       expect(calculator.resultDisplay).toBe("0.25");
     });
 
@@ -199,6 +202,8 @@ describe("Calculator", () => {
 
     it("appends pi", () => {
       type(calculator, ["π", "="]);
+      expect(calculator.resultDisplay).toBe("π");
+      calculator.toggleExact();
       expect(calculator.resultDisplay).toBe("3.14159265359");
     });
 
@@ -238,6 +243,8 @@ describe("Calculator", () => {
   describe("percent", () => {
     it("divides a standalone number by 100", () => {
       type(calculator, ["5", "0", "%", "="]);
+      expect(calculator.resultDisplay).toBe("1/2");
+      calculator.toggleExact();
       expect(calculator.resultDisplay).toBe("0.5");
     });
 
@@ -288,6 +295,8 @@ describe("Calculator", () => {
 
     it("keeps a genuinely long result", () => {
       type(calculator, ["1", "÷", "3", "="]);
+      expect(calculator.resultDisplay).toBe("1/3");
+      calculator.toggleExact();
       expect(calculator.resultDisplay).toBe("0.333333333333");
     });
   });
@@ -306,7 +315,16 @@ describe("Calculator", () => {
       calculator.angleMode = "deg";
       calculator.appendFunction("cos");
       type(calculator, ["6", "0", ")", "="]);
+      expect(calculator.resultDisplay).toBe("1/2");
+      calculator.toggleExact();
       expect(calculator.resultDisplay).toBe("0.5");
+    });
+
+    it("has an exact form for a special angle", () => {
+      calculator.angleMode = "deg";
+      calculator.appendFunction("sin");
+      type(calculator, ["4", "5", ")", "="]);
+      expect(calculator.resultDisplay).toBe("√2/2");
     });
 
     it("applies to the live preview as well as the result", () => {
@@ -471,7 +489,9 @@ describe("Calculator", () => {
   describe("history", () => {
     it("records a completed sum", () => {
       type(calculator, ["1", "2", "+", "3", "="]);
-      expect(calculator.history).toEqual([{ expression: "12 + 3", result: "15" }]);
+      expect(calculator.history).toEqual([
+        { expression: "12 + 3", result: "15", recall: "15" },
+      ]);
     });
 
     it("puts the newest first", () => {
@@ -509,7 +529,7 @@ describe("Calculator", () => {
   describe("restore", () => {
     it("brings back history and memory", () => {
       calculator.restore({
-        history: [{ expression: "1 + 1", result: "2" }],
+        history: [{ expression: "1 + 1", result: "2", recall: "2" }],
         memory: 42,
       });
       expect(calculator.history).toHaveLength(1);
@@ -517,7 +537,11 @@ describe("Calculator", () => {
     });
 
     it("caps restored history", () => {
-      const many = Array.from({ length: 80 }, () => ({ expression: "1 + 1", result: "2" }));
+      const many = Array.from({ length: 80 }, () => ({
+        expression: "1 + 1",
+        result: "2",
+        recall: "2",
+      }));
       calculator.restore({ history: many });
       expect(calculator.history).toHaveLength(50);
     });
@@ -559,25 +583,49 @@ describe("regressions", () => {
   let calculator: Calculator;
   beforeEach(() => { calculator = new Calculator(); });
 
-  it("carries a very large result into the next sum intact", () => {
+  // This began as a regression test for "e+21" parsing as Euler's constant.
+  // Exact arithmetic goes further and computes the product in BigInt, so all
+  // twenty-two digits are shown rather than a rounded 9.9999999998e+21.
+  it("computes a very large product exactly", () => {
     type(calculator, [..."99999999999", "*", ..."99999999999", "="]);
-    const big = calculator.resultDisplay;
+    expect(calculator.resultDisplay).toBe("9999999999800000000001");
+    calculator.toggleExact();
+    expect(calculator.resultDisplay).toBe("9.9999999998e+21");
+  });
+
+  // The limit of that: a result re-enters the expression as a number literal,
+  // and a double cannot hold twenty-two digits, so continuing from one falls
+  // back to floating point rather than silently claiming more precision.
+  it("falls back to the float when such a result is carried onward", () => {
+    type(calculator, [..."99999999999", "*", ..."99999999999", "="]);
     type(calculator, ["+", "1", "="]);
-    // Was 49.182818284, because "e+21" parsed as Euler's constant.
-    expect(calculator.resultDisplay).toBe(big);
+    expect(calculator.resultDisplay).toBe("9.9999999998e+21");
+    expect(calculator.hasExactForm).toBe(false);
   });
 
   it("displays a very small result rather than rounding it to 0", () => {
     type(calculator, ["1", "÷", ..."10000000", "="]);
+    // Exact, because the question had no decimal point in it.
+    expect(calculator.resultDisplay).toBe("1/10000000");
+    calculator.toggleExact();
     expect(calculator.resultDisplay).toBe("1e-7");
   });
 
-  it("recalls an exponential history result without corrupting it", () => {
+  it("recalls a history result without corrupting it", () => {
     type(calculator, ["1", "÷", ..."10000000", "="]);
-    const stored = calculator.history[0]?.result ?? "";
+    const stored = calculator.history[0]?.recall ?? "";
     calculator.recall(stored);
     type(calculator, ["*", "1", "0", "="]);
-    expect(calculator.resultDisplay).toBe("0.000001");
+    // Recalled exactly, so the answer stays exact too.
+    expect(calculator.resultDisplay).toBe("1/1000000");
+  });
+
+  it("shows the exact form in the history when that is what was displayed", () => {
+    type(calculator, ["√", "8", ")", "="]);
+    expect(calculator.resultDisplay).toBe("2√2");
+    expect(calculator.history[0]?.result).toBe("2√2");
+    // ...and recalls something the parser can actually read.
+    expect(calculator.history[0]?.recall).toBe("(2*sqrt(2))");
   });
 
   it("starts afresh when ± follows =, rather than rewriting the result", () => {
@@ -644,6 +692,167 @@ describe("regressions", () => {
     // Was "(+3)", which could never evaluate.
     expect(calculator.error).toBeNull();
     expect(calculator.resultDisplay).toBe("3");
+  });
+});
+
+// The feature the reference hardware is named for.
+describe("exact answers", () => {
+  let calculator: Calculator;
+  beforeEach(() => { calculator = new Calculator(); });
+
+  it.each([
+    [["1", "÷", "3", "+", "1", "÷", "6", "="], "1/2"],
+    [["√", "8", ")", "="], "2√2"],
+    [["2", "÷", "4", "="], "1/2"],
+    [["π", "÷", "4", "="], "π/4"],
+    [["1", "÷", "√", "2", ")", "="], "√2/2"],
+  ])("computes %j as %s", (keys, expected) => {
+    expect(type(calculator, keys).resultDisplay).toBe(expected);
+  });
+
+  it("shows sin(pi/4) as a surd", () => {
+    type(calculator, ["√"]);
+    calculator.clear();
+    calculator.appendFunction("sin");
+    type(calculator, ["π", "÷", "4", ")", "="]);
+    expect(calculator.resultDisplay).toBe("√2/2");
+  });
+
+  describe("which form is shown first", () => {
+    it("keeps the exact form when the question had none", () => {
+      type(calculator, ["1", "÷", "4", "="]);
+      expect(calculator.isShowingExact).toBe(true);
+      expect(calculator.resultDisplay).toBe("1/4");
+    });
+
+    it("keeps the decimal when the question had one", () => {
+      type(calculator, ["0", ".", "1", "+", "0", ".", "2", "="]);
+      expect(calculator.isShowingExact).toBe(false);
+      expect(calculator.resultDisplay).toBe("0.3");
+    });
+  });
+
+  describe("the F<->D key", () => {
+    it("swaps to the decimal and back", () => {
+      type(calculator, ["1", "÷", "3", "="]);
+      expect(calculator.resultDisplay).toBe("1/3");
+      calculator.toggleExact();
+      expect(calculator.resultDisplay).toBe("0.333333333333");
+      calculator.toggleExact();
+      expect(calculator.resultDisplay).toBe("1/3");
+    });
+
+    it("swaps a decimal answer to its fraction", () => {
+      type(calculator, ["0", ".", "1", "+", "0", ".", "2", "="]);
+      calculator.toggleExact();
+      expect(calculator.resultDisplay).toBe("3/10");
+    });
+
+    it("does nothing when there is no exact form", () => {
+      calculator.appendFunction("ln");
+      type(calculator, ["5", ")", "="]);
+      expect(calculator.hasExactForm).toBe(false);
+      const before = calculator.resultDisplay;
+      calculator.toggleExact();
+      expect(calculator.resultDisplay).toBe(before);
+    });
+
+    it("does nothing while an expression is still being typed", () => {
+      type(calculator, ["1", "÷", "3"]);
+      expect(calculator.hasExactForm).toBe(false);
+    });
+  });
+
+  describe("when there is nothing worth showing", () => {
+    it("skips a plain integer", () => {
+      type(calculator, ["2", "+", "2", "="]);
+      expect(calculator.hasExactForm).toBe(false);
+      expect(calculator.resultDisplay).toBe("4");
+    });
+
+    it("falls back for a transcendental result", () => {
+      calculator.appendFunction("ln");
+      type(calculator, ["5", ")", "="]);
+      expect(calculator.resultDisplay).toBe("1.60943791243");
+    });
+
+    it("falls back for an arbitrary angle", () => {
+      calculator.appendFunction("sin");
+      type(calculator, ["1", ")", "="]);
+      expect(calculator.hasExactForm).toBe(false);
+    });
+
+    it("falls back for a sum of unlike surds", () => {
+      type(calculator, ["√", "2", ")", "+", "√", "3", ")", "="]);
+      expect(calculator.hasExactForm).toBe(false);
+    });
+  });
+
+  it("carries the decimal value forward, not the displayed fraction", () => {
+    type(calculator, ["1", "÷", "3", "="]);
+    expect(calculator.resultDisplay).toBe("1/3");
+    type(calculator, ["*", "3", "="]);
+    expect(calculator.resultDisplay).toBe("1");
+  });
+
+  it("clears with AC", () => {
+    type(calculator, ["1", "÷", "3", "=", "AC"]);
+    expect(calculator.hasExactForm).toBe(false);
+  });
+
+  // Each of these was a real defect: the carried exact form has to reparse as
+  // the same number, and the keys that act on a value have to find it.
+  describe("carrying an exact result forward", () => {
+    it("keeps a reciprocal of pi intact", () => {
+      type(calculator, ["1", "÷"]);
+      calculator.appendConstant("π");
+      type(calculator, ["="]);
+      expect(calculator.resultDisplay).toBe("1/π");
+      type(calculator, ["*", "2", "="]);
+      // Was 2π, because "(1/1*pi)" reparsed as (1/1)*pi.
+      expect(calculator.resultDisplay).toBe("2/π");
+    });
+
+    it("negates a carried fraction", () => {
+      type(calculator, ["1", "÷", "2", "="]);
+      calculator.toggleSign();
+      expect(calculator.expression).toBe("-(1/2)");
+      expect(calculator.resultDisplay).toBe("-0.5");
+    });
+
+    it("takes a percentage of a carried fraction", () => {
+      type(calculator, ["1", "÷", "2", "="]);
+      calculator.percent();
+      type(calculator, ["="]);
+      expect(calculator.resultDisplay).toBe("1/200");
+    });
+
+    it("repeats = exactly", () => {
+      type(calculator, ["1", "÷", "3", "="]);
+      expect(calculator.resultDisplay).toBe("1/3");
+      type(calculator, ["="]);
+      // Was 0.111111111111, from the rounded decimal.
+      expect(calculator.resultDisplay).toBe("1/9");
+    });
+
+    // Where the exact value and the float disagree, the float is the one that
+    // drifted: 180^5 degrees is a whole number of half-turns, so its sine is
+    // exactly zero.
+    it("prefers the exact value over a drifted float", () => {
+      calculator.angleMode = "deg";
+      calculator.appendFunction("sin");
+      type(calculator, ["1", "8", "0", "^", "5", ")", "="]);
+      expect(calculator.resultDisplay).toBe("0");
+    });
+
+    it("agrees with the decimal it replaces", () => {
+      type(calculator, ["1", "÷", "3", "="]);
+      const exact = calculator.resultDisplay;
+      calculator.toggleExact();
+      const decimal = Number(calculator.resultDisplay);
+      expect(exact).toBe("1/3");
+      expect(decimal).toBeCloseTo(1 / 3, 11);
+    });
   });
 });
 
@@ -718,6 +927,8 @@ describe("cursor editing", () => {
       calculator.percent();
       type(calculator, ["="]);
       expect(calculator.expression).toBe("5+(5*10/100)");
+      expect(calculator.resultDisplay).toBe("11/2");
+      calculator.toggleExact();
       expect(calculator.resultDisplay).toBe("5.5");
     });
 
@@ -777,8 +988,10 @@ describe("cursor editing", () => {
     // ± and % rewrite the number at the caret, and an exponential result is
     // one number: "1e-7" negated is "-1e-7", not "1e--7".
     describe("an exponential result", () => {
+      // Typed as a decimal, so there is no exact form and the result really
+      // is carried forward as the literal "1e-7".
       it("negates as one number", () => {
-        type(calculator, ["1", "÷", ..."10000000", "="]);
+        type(calculator, ["0", ".", ..."0000001", "="]);
         expect(calculator.resultDisplay).toBe("1e-7");
         calculator.toggleSign();
         expect(calculator.expression).toBe("-1e-7");
@@ -787,7 +1000,7 @@ describe("cursor editing", () => {
       });
 
       it("takes a percentage as one number", () => {
-        type(calculator, ["1", "÷", ..."10000000", "="]);
+        type(calculator, ["0", ".", ..."0000001", "="]);
         calculator.percent();
         type(calculator, ["="]);
         expect(calculator.resultDisplay).toBe("1e-9");
@@ -908,6 +1121,8 @@ describe("powers of a negative result", () => {
     type(calculator, ["2", "-", "9", "="]);
     calculator.reciprocal();
     type(calculator, ["="]);
+    expect(calculator.resultDisplay).toBe("-1/7");
+    calculator.toggleExact();
     expect(calculator.resultDisplay).toBe("-0.142857142857");
   });
 });

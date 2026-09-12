@@ -93,8 +93,10 @@ export function fromNumber(value: number): ExactValue | null {
   }
 
   const text = String(value);
-  // Exponential form and long tails are not worth reconstructing exactly.
-  const match = /^(-?)(\d+)\.(\d{1,15})$/.exec(text);
+  // Exponential form and long tails are not worth reconstructing exactly: a
+  // fifteen-digit tail is an approximation of something, and showing it as a
+  // fraction over 10^15 helps nobody.
+  const match = /^(-?)(\d+)\.(\d{1,9})$/.exec(text);
   if (match === null) return null;
 
   const [, sign, whole, fraction] = match;
@@ -148,8 +150,11 @@ export function multiply(a: ExactValue, b: ExactValue): ExactValue | null {
 /** 1/x, rationalising the surd: 1/√2 is √2/2. */
 export function reciprocal(value: ExactValue): ExactValue | null {
   if (isZero(value)) return null;
+  // 1/((n√r·π^p)/d) = d/(n√r·π^p) = (d·√r·π^-p)/(n·r) -- the √r that appears
+  // in the numerator is what rationalising the denominator produces, and it
+  // is already accounted for by dividing by r.
   return normalise({
-    num: value.den * value.radicand,
+    num: value.den,
     den: value.num * value.radicand,
     radicand: value.radicand,
     piPower: -value.piPower,
@@ -224,6 +229,43 @@ function partsFor(coefficient: bigint, radicand: bigint, piPower: number): strin
   return coefficient === 1n ? symbols : `${coefficient}${symbols}`;
 }
 
+/**
+ * The value written so the parser can read it back: "(1*sqrt(2)/2)".
+ *
+ * Deliberately not the display form -- that uses √ and π symbols the
+ * tokenizer does not accept. This is what lets a result be carried into the
+ * next calculation without losing precision: continuing from a displayed 1/3
+ * and multiplying by 3 gives exactly 1, not 0.999999999999.
+ */
+export function toExpression(value: ExactValue): string {
+  if (isZero(value)) return "0";
+
+  const sign = value.num < 0n ? "-" : "";
+  const magnitude = absolute(value.num);
+
+  // A plain integer needs no brackets, and reads better without them.
+  if (isInteger(value)) return `${sign}${magnitude}`;
+
+  const numerator = [String(magnitude)];
+  if (value.radicand !== 1n) numerator.push(`sqrt(${value.radicand})`);
+  for (let i = 0; i < Math.max(value.piPower, 0); i += 1) numerator.push("pi");
+
+  const denominator = [String(value.den)];
+  for (let i = 0; i < Math.max(-value.piPower, 0); i += 1) denominator.push("pi");
+
+  /** Drop a redundant leading 1, since 1*pi is just pi. */
+  const join = (parts: readonly string[]): string =>
+    (parts.length > 1 && parts[0] === "1" ? parts.slice(1) : parts).join("*");
+
+  const top = join(numerator);
+  const bottom = join(denominator);
+
+  // "1/1*pi" would reparse as (1/1)*π, so a denominator with more than one
+  // factor needs brackets of its own.
+  if (bottom === "1") return `(${sign}${top})`;
+  return `(${sign}${top}/${bottom.includes("*") ? `(${bottom})` : bottom})`;
+}
+
 /** How the value should read on screen: "√2/2", "2π/3", "1/2", "-3". */
 export function toDisplay(value: ExactValue): string {
   if (isZero(value)) return "0";
@@ -233,9 +275,13 @@ export function toDisplay(value: ExactValue): string {
 
   // A negative power of π belongs under the line.
   const numerator = partsFor(magnitude, value.radicand, Math.max(value.piPower, 0));
+  // A denominator with both a number and a π reads ambiguously without
+  // brackets: "1/2π" looks like (1/2)·π rather than 1/(2π).
   const denominator =
     value.piPower < 0
-      ? partsFor(value.den, 1n, -value.piPower)
+      ? value.den === 1n
+        ? partsFor(1n, 1n, -value.piPower)
+        : `(${partsFor(value.den, 1n, -value.piPower)})`
       : value.den === 1n
         ? ""
         : String(value.den);

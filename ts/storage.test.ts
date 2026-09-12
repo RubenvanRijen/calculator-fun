@@ -37,7 +37,7 @@ describe("storage", () => {
   it("round-trips state", () => {
     saveState(
       {
-        history: [{ expression: "1 + 1", result: "2" }],
+        history: [{ expression: "1 + 1", result: "2", recall: "2" }],
         memory: 7,
         theme: "dark",
         angleMode: "deg",
@@ -47,7 +47,7 @@ describe("storage", () => {
       storage
     );
     expect(loadState(storage)).toEqual({
-      history: [{ expression: "1 + 1", result: "2" }],
+      history: [{ expression: "1 + 1", result: "2", recall: "2" }],
       memory: 7,
       theme: "dark",
       angleMode: "deg",
@@ -89,7 +89,14 @@ describe("storage", () => {
     it("drops history entries of the wrong shape", () => {
       const raw = JSON.stringify({ history: [{ expression: "1+1", result: "2" }, 42, {}] });
       expect(loadState(memoryStorage({ "calculator-fun.state": raw })).history)
-        .toEqual([{ expression: "1+1", result: "2" }]);
+        .toEqual([{ expression: "1+1", result: "2", recall: "2" }]);
+    });
+
+    // Entries saved before the recall field existed still work.
+    it("fills in a missing recall value from the result", () => {
+      const raw = JSON.stringify({ history: [{ expression: "\u221a8", result: "2\u221a2" }] });
+      expect(loadState(memoryStorage({ "calculator-fun.state": raw })).history?.[0]?.recall)
+        .toBe("2\u221a2");
     });
 
     it("ignores a non-numeric memory", () => {

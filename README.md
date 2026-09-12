@@ -123,6 +123,22 @@ character-wise, as in any text field.
 **`Ans`** inserts the previous result, so a long calculation can be carried
 forward: `5 × 7 =` then `Ans + 1 =` gives 36.
 
+**Exact answers.** Results that have an exact form are shown that way rather
+than rounded: `1/3 + 1/6` is `1/2`, `√8` is `2√2`, `sin 45°` is `√2/2`, and
+`π/4` stays `π/4`. An `EXACT` badge marks it, and `2nd` + `n/d` is `F⇔D`,
+which swaps to the decimal and back.
+
+An answer keeps the form of the question, as it does on the hardware: ask in
+fractions and get a fraction, ask in decimals and get a decimal.
+
+Values of the form `(a·√b·π^k)/c` are covered, held in `BigInt` so nothing
+rounds. Anything outside it — `ln 5`, `sin 1`, `√2 + √3` — has no exact form
+and falls back to the decimal automatically. The exact value is also what gets
+carried into the next calculation, so continuing from a displayed `1/3` and
+multiplying by 3 gives exactly `1` rather than `0.999999999999`.
+
+`n/d` starts a fraction, and the history shows whichever form was on screen.
+
 **Scientific keys**: `√`, `x²`, `1/x`, `xⁿ`, `π`, `sin`, `cos`, `tan`, `log`,
 `ln`, plus `±` to flip a sign.
 

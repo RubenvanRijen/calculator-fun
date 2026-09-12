@@ -221,6 +221,26 @@ export class ExpressionBuffer {
     return null;
   }
 
+  /**
+   * The span of the whole expression when it is one bracketed group, e.g. the
+   * "(1/2)" a carried exact result leaves behind. The sign and percent keys
+   * treat it as the value to act on, since there is no bare number to find.
+   */
+  get wholeGroup(): { literal: string; start: number; end: number } | null {
+    if (!this.#text.startsWith("(") || !this.#text.endsWith(")")) return null;
+
+    let depth = 0;
+    for (let index = 0; index < this.#text.length; index += 1) {
+      const character = this.#text[index];
+      if (character === "(") depth += 1;
+      else if (character === ")") depth -= 1;
+      // Closing before the end means these are two groups, not one.
+      if (depth === 0 && index < this.#text.length - 1) return null;
+    }
+
+    return { literal: this.#text, start: 0, end: this.#text.length };
+  }
+
   /** Replace a span of the text, leaving the caret after what was written. */
   replaceRange(start: number, end: number, text: string): void {
     this.replace(this.#text.slice(0, start) + text + this.#text.slice(end));

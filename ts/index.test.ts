@@ -178,7 +178,7 @@ describe("setupCalculator", () => {
     });
 
     it("does not latch when a key names an action that does not exist", () => {
-      const stray = keyFor("percent");
+      const stray = keyFor("square");
       stray.dataset["actionAlt"] = "no-such-action";
       press("2nd");
       stray.click();
@@ -283,15 +283,17 @@ describe("setupCalculator", () => {
       press("5", "x²", "=");
       expect(result()).toBe("25");
       press("AC", "4", "1/x", "=");
-      expect(result()).toBe("0.25");
+      expect(result()).toBe("1/4");
       press("AC", "√", "9", "=");
       expect(result()).toBe("3");
       press("AC", "π", "=");
-      expect(result()).toBe("3.14159265359");
+      expect(result()).toBe("π");
     });
 
-    it("wires up xⁿ", () => {
-      press("2", "xⁿ", "1", "0", "=");
+    it("wires up xⁿ through 2nd", () => {
+      press("2", "2nd");
+      keyFor("square").click();
+      press("1", "0", "=");
       expect(result()).toBe("1,024");
     });
 
@@ -407,6 +409,13 @@ describe("setupCalculator", () => {
       expect(button("7").classList.contains("is-pressed")).toBe(true);
     });
 
+    // "^" corresponds to a key whose label moved to the 2nd layer, so the
+    // lookup has to know both legends.
+    it("flashes a key whose label is on the 2nd layer", () => {
+      type("2", "^");
+      expect(keyFor("square").classList.contains("is-pressed")).toBe(true);
+    });
+
     it("ignores keys it does not own", () => {
       const event = new KeyboardEvent("keydown", { key: "q", bubbles: true, cancelable: true });
       document.dispatchEvent(event);
@@ -473,6 +482,43 @@ describe("setupCalculator", () => {
       handle.destroy();
       type("9");
       expect(expression()).toBe("");
+    });
+  });
+
+  describe("exact answers", () => {
+    const exactBadge = () => root.querySelector<HTMLElement>("[data-exact-indicator]");
+
+    it("shows a fraction and flags it", () => {
+      press("1", "÷", "3", "=");
+      expect(result()).toBe("1/3");
+      expect(exactBadge()?.hidden).toBe(false);
+    });
+
+    it("swaps to the decimal through 2nd on n/d", () => {
+      press("1", "÷", "3", "=", "2nd");
+      keyFor("fraction").click();
+      expect(result()).toBe("0.333333333333");
+      expect(exactBadge()?.hidden).toBe(true);
+    });
+
+    it("shows a surd", () => {
+      press("2nd");
+      keyFor("square").click();
+      press("AC", "√", "8", ")", "=");
+      expect(result()).toBe("2√2");
+    });
+
+    it("hides the badge when there is nothing exact to show", () => {
+      press("2", "+", "2", "=");
+      expect(exactBadge()?.hidden).toBe(true);
+    });
+
+    it("wires up n/d", () => {
+      keyFor("fraction").click();
+      press("1");
+      keyFor("cursor-right").click();
+      press("2", "=");
+      expect(result()).toBe("1/2");
     });
   });
 

@@ -69,18 +69,21 @@ test.describe("scientific keys", () => {
     await press(page, "5", "x²", "=");
     await expect(result(page)).toHaveText("25");
 
+    // Exact by default: the question had no decimal point in it.
     await press(page, "AC", "4", "1/x", "=");
-    await expect(result(page)).toHaveText("0.25");
+    await expect(result(page)).toHaveText("1/4");
 
     await press(page, "AC", "√", "9", "=");
     await expect(result(page)).toHaveText("3");
 
     await press(page, "AC", "π", "=");
-    await expect(result(page)).toHaveText("3.14159265359");
+    await expect(result(page)).toHaveText("π");
   });
 
-  test("raises to a power", async ({ page }) => {
-    await press(page, "2", "xⁿ", "1", "0", "=");
+  test("raises to a power through 2nd", async ({ page }) => {
+    await press(page, "2", "2nd");
+    await page.locator('[data-keypad] [data-action="square"]').click();
+    await press(page, "1", "0", "=");
     await expect(result(page)).toHaveText("1,024");
   });
 
@@ -152,7 +155,7 @@ test.describe("trigonometry and angle modes", () => {
     await press(page, "mode", "mode"); // rad -> grad -> deg
     await expect(angle(page)).toHaveText("DEG");
     await press(page, "cos", "6", "0", ")", "=");
-    await expect(result(page)).toHaveText("0.5");
+    await expect(result(page)).toHaveText("1/2");
   });
 
   test("the same keys mean something else in radians", async ({ page }) => {
@@ -192,6 +195,54 @@ test.describe("trigonometry and angle modes", () => {
     await expect(angle(page)).toHaveText("DEG");
     await page.reload();
     await expect(angle(page)).toHaveText("DEG");
+  });
+});
+
+test.describe("exact answers", () => {
+  test("shows a fraction rather than a decimal", async ({ page }) => {
+    await press(page, "1", "÷", "3", "=");
+    await expect(result(page)).toHaveText("1/3");
+    await expect(page.locator("[data-exact-indicator]")).toBeVisible();
+  });
+
+  test("shows a surd", async ({ page }) => {
+    await press(page, "√", "8", ")", "=");
+    await expect(result(page)).toHaveText("2√2");
+  });
+
+  test("shows an exact trig value", async ({ page }) => {
+    await press(page, "mode", "mode"); // rad -> grad -> deg
+    await press(page, "sin", "4", "5", ")", "=");
+    await expect(result(page)).toHaveText("√2/2");
+  });
+
+  test("F<->D swaps to the decimal and back", async ({ page }) => {
+    await press(page, "1", "÷", "3", "=", "2nd");
+    await page.locator('[data-keypad] [data-action="fraction"]').click();
+    await expect(result(page)).toHaveText("0.333333333333");
+    await expect(page.locator("[data-exact-indicator]")).toBeHidden();
+  });
+
+  test("a decimal question keeps a decimal answer", async ({ page }) => {
+    await press(page, "0", ".", "1", "+", "0", ".", "2", "=");
+    await expect(result(page)).toHaveText("0.3");
+    await expect(page.locator("[data-exact-indicator]")).toBeHidden();
+  });
+
+  test("carries the exact value into the next calculation", async ({ page }) => {
+    await press(page, "1", "÷", "3", "=");
+    await expect(result(page)).toHaveText("1/3");
+    await press(page, "*", "3", "=");
+    // Not 0.999999999999.
+    await expect(result(page)).toHaveText("1");
+  });
+
+  test("wires up n/d entry", async ({ page }) => {
+    await page.locator('[data-keypad] [data-action="fraction"]').click();
+    await press(page, "3");
+    await page.locator('[data-keypad] [data-action="cursor-right"]').click();
+    await press(page, "4", "=");
+    await expect(result(page)).toHaveText("3/4");
   });
 });
 

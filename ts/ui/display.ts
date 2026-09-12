@@ -11,6 +11,7 @@ export class Display {
   readonly #memory: HTMLElement | null;
   readonly #paren: HTMLElement | null;
   readonly #angle: HTMLElement | null;
+  readonly #exact: HTMLElement | null;
 
   constructor(root: Document | HTMLElement) {
     const query = <T extends HTMLElement>(selector: string): T | null =>
@@ -33,6 +34,7 @@ export class Display {
     this.#memory = query("[data-memory-indicator]");
     this.#paren = query("[data-paren-indicator]");
     this.#angle = query("[data-angle-indicator]");
+    this.#exact = query("[data-exact-indicator]");
   }
 
   render(calculator: Calculator): void {
@@ -48,6 +50,9 @@ export class Display {
     }
     if (this.#angle) {
       this.#angle.textContent = calculator.angleMode.toUpperCase();
+    }
+    if (this.#exact) {
+      this.#exact.hidden = !calculator.isShowingExact;
     }
     if (this.#paren) {
       const open = calculator.openParenCount;

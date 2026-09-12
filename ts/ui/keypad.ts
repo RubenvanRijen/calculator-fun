@@ -78,6 +78,8 @@ export class Keypad {
         calculator.angleMode = nextAngleMode(calculator.angleMode);
       },
       ans: () => calculator.appendAns(),
+      "toggle-exact": () => calculator.toggleExact(),
+      fraction: () => calculator.appendFraction(),
       "cursor-left": () => calculator.moveLeft(),
       "cursor-right": () => calculator.moveRight(),
       "recall-previous": () => calculator.recallPrevious(),
@@ -88,9 +90,17 @@ export class Keypad {
     for (const button of root.querySelectorAll<HTMLElement>("button")) {
       // Keypad keys carry their primary label in .legend and an optional 2nd
       // label in .legend-alt; other buttons are plain text.
-      const label = (button.querySelector(".legend") ?? button).textContent?.trim();
-      if (label && !this.#buttonsByLabel.has(label)) {
-        this.#buttonsByLabel.set(label, button);
+      // Both legends, because a keyboard key may correspond to an action that
+      // now lives on the 2nd layer -- "^" flashes the x² key, which shows xⁿ
+      // when shifted.
+      const labels = [
+        (button.querySelector(".legend") ?? button).textContent?.trim(),
+        button.querySelector(".legend-alt")?.textContent?.trim(),
+      ];
+      for (const label of labels) {
+        if (label && !this.#buttonsByLabel.has(label)) {
+          this.#buttonsByLabel.set(label, button);
+        }
       }
     }
 

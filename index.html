@@ -25,6 +25,7 @@
                     <span data-memory-indicator class="badge" hidden>M</span>
                     <span data-paren-indicator class="badge" hidden>( 0</span>
                     <span data-angle-indicator class="badge">RAD</span>
+                    <span data-exact-indicator class="badge" hidden>EXACT</span>
                     <div data-expression class="expression" aria-live="polite"></div>
                 </div>
                 <div data-result class="result" aria-live="polite"></div>
@@ -40,7 +41,7 @@
             <button data-action="second" class="key-second"><span class="legend">2nd</span></button>
             <button data-action="angle-mode" class="key-small"><span class="legend">mode</span></button>
             <button data-action="function" data-arg="sqrt" data-action-alt="function" data-arg-alt="abs" class="key-small"><span class="legend">√</span><span class="legend-alt">abs</span></button>
-            <button data-action="square" class="key-small"><span class="legend">x²</span></button>
+            <button data-action="square" data-action-alt="operation" data-arg-alt="^" class="key-small"><span class="legend">x²</span><span class="legend-alt">xⁿ</span></button>
             <button data-action="reciprocal" class="key-small"><span class="legend">1/x</span></button>
             <button data-action="function" data-arg="sin" data-action-alt="function" data-arg-alt="asin" class="key-small"><span class="legend">sin</span><span class="legend-alt">sin⁻¹</span></button>
             <button data-action="function" data-arg="cos" data-action-alt="function" data-arg-alt="acos" class="key-small"><span class="legend">cos</span><span class="legend-alt">cos⁻¹</span></button>
@@ -60,7 +61,7 @@
             <button data-action="number" data-arg="7"><span class="legend">7</span></button>
             <button data-action="number" data-arg="8"><span class="legend">8</span></button>
             <button data-action="number" data-arg="9"><span class="legend">9</span></button>
-            <button data-action="operation" data-arg="^" class="key-small"><span class="legend">xⁿ</span></button>
+            <button data-action="fraction" data-action-alt="toggle-exact" class="key-small"><span class="legend">n/d</span><span class="legend-alt">F⇔D</span></button>
             <button data-action="operation" data-arg="*" class="key-operator"><span class="legend">*</span></button>
             <button data-action="number" data-arg="4"><span class="legend">4</span></button>
             <button data-action="number" data-arg="5"><span class="legend">5</span></button>

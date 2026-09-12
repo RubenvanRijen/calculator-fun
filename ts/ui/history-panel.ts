@@ -49,7 +49,7 @@ export class HistoryPanel {
     result.textContent = entry.result;
 
     button.append(expression, result);
-    button.addEventListener("click", () => this.#onRecall(entry.result), {
+    button.addEventListener("click", () => this.#onRecall(entry.recall), {
       signal: this.#signal,
     });
 

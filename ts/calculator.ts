@@ -1,4 +1,11 @@
-import { evaluateString, isOperation } from "@/expression.ts";
+import { evaluateString, isOperation, toRpn, tokenize } from "@/expression.ts";
+import { evaluateExactRpn } from "@/exact-evaluator.ts";
+import {
+  isInteger as isExactInteger,
+  toDisplay as toExactDisplay,
+  toExpression as toExactExpression,
+} from "@/exact.ts";
+import type { ExactValue } from "@/interfaces/exact-value.ts";
 import { ExpressionBuffer } from "@/expression-buffer.ts";
 import { HistoryLog } from "@/history-log.ts";
 import { MemoryRegister } from "@/memory-register.ts";
@@ -46,6 +53,12 @@ export class Calculator {
    * AC: on the hardware Ans survives a clear the way memory does.
    */
   #lastAnswer: number | null = null;
+  /** How the last result reads exactly, when it has an exact form. */
+  #exact: string | null = null;
+  /** The same value, kept so it can be carried forward without rounding. */
+  #exactValue: ExactValue | null = null;
+  /** Whether the display is showing the exact form rather than the decimal. */
+  #showingExact = true;
   /** Expressions that were computed, oldest first, for up/down recall. */
   #entries: string[] = [];
   /** Where in #entries the user is; equal to its length when not browsing. */
@@ -131,6 +144,19 @@ export class Calculator {
     return true;
   }
 
+  /**
+   * Start a fraction: inserts "(/)" with the caret between the brackets, so
+   * the numerator is typed, then the caret moved right past the slash for the
+   * denominator. Wrapping it keeps the fraction whole inside a larger sum.
+   */
+  appendFraction(): void {
+    this.#beginFreshEntry();
+    this.#buffer.push("(/)");
+    this.#buffer.moveLeft();
+    this.#buffer.moveLeft();
+    this.#refreshPreview();
+  }
+
   /** Insert a reference to the previous result. */
   appendAns(): void {
     this.#beginFreshEntry();
@@ -173,6 +199,9 @@ export class Calculator {
     this.error = null;
     this.#result = null;
     this.#preview = "";
+    this.#exact = null;
+    this.#exactValue = null;
+    this.#showingExact = true;
     this.#justComputed = false;
     this.#repeatTail = null;
   }
@@ -300,7 +329,7 @@ export class Calculator {
     this.error = null;
     this.#continueFromResult();
 
-    const number = this.#buffer.numberAtCursor;
+    const number = this.#buffer.numberAtCursor ?? this.#buffer.wholeGroup;
     if (number === null) return;
 
     const { literal, start, end } = number;
@@ -325,7 +354,7 @@ export class Calculator {
     this.error = null;
     this.#continueFromResult();
 
-    const number = this.#buffer.numberAtCursor;
+    const number = this.#buffer.numberAtCursor ?? this.#buffer.wholeGroup;
     if (number === null) return;
 
     const { literal, start, end } = number;
@@ -387,10 +416,14 @@ export class Calculator {
 
     if (this.#justComputed) {
       if (this.#repeatTail === null || this.#result === null) return;
+      // The same exact carry the operator keys get, so "1÷3= =" gives 1/9
+      // rather than 0.111111111111.
       const carried =
-        this.#repeatTail.startsWith("^") && this.#result.startsWith("-")
-          ? `(${this.#result})`
-          : this.#result;
+        this.#exactValue !== null && !isExactInteger(this.#exactValue)
+          ? toExactExpression(this.#exactValue)
+          : this.#repeatTail.startsWith("^") && this.#result.startsWith("-")
+            ? `(${this.#result})`
+            : this.#result;
       this.#buffer.replace(carried + this.#repeatTail);
     }
 
@@ -414,8 +447,20 @@ export class Calculator {
     }
 
     const result = roundResult(value).toString();
+    this.#exactValue = this.#exactValueOf(expression);
+    this.#exact = this.#displayableExact(this.#exactValue, result);
+    // An answer keeps the form of the question, as it does on the hardware:
+    // ask in fractions and get a fraction, ask in decimals and get a decimal.
+    // F<->D swaps either way.
+    this.#showingExact = !expression.includes(".");
     this.#repeatTail = trailingOperation(expression);
-    this.#history.add(formatExpression(expression), result);
+    // The history shows what the display showed, and recalls a form the
+    // parser can read back.
+    this.#history.add(
+      formatExpression(expression),
+      this.#showingExact && this.#exact !== null ? this.#exact : result,
+      this.#exactValue !== null ? toExactExpression(this.#exactValue) : result
+    );
 
     // Keep the entry list free of consecutive duplicates, so pressing = twice
     // does not fill it with the same line.
@@ -451,7 +496,66 @@ export class Calculator {
   /** The large lower line: the result, or a live preview while typing. */
   get resultDisplay(): string {
     if (this.#buffer.isEmpty && this.#result === null) return "";
+    if (this.#justComputed && this.#showingExact && this.#exact !== null) {
+      return this.#exact;
+    }
     return formatOperand(this.#preview);
+  }
+
+  /** Whether there is an exact form to toggle to, for the F<->D key. */
+  get hasExactForm(): boolean {
+    return this.#justComputed && this.#exact !== null;
+  }
+
+  /** Whether the exact form is the one currently on screen. */
+  get isShowingExact(): boolean {
+    return this.hasExactForm && this.#showingExact;
+  }
+
+  /** Swap between the exact form and the decimal. */
+  toggleExact(): void {
+    if (!this.hasExactForm) return;
+    this.#showingExact = !this.#showingExact;
+  }
+
+  /**
+   * The exact reading of an expression, when it has one worth showing.
+   *
+   * A plain integer is skipped: 2 + 2 is 4 either way, and an "exact" badge on
+   * it would be noise. Anything the exact evaluator cannot represent, or that
+   * disagrees with the decimal, is skipped too -- the two must never show
+   * different numbers.
+   */
+  #exactValueOf(expression: string): ExactValue | null {
+    try {
+      return evaluateExactRpn(toRpn(tokenize(expression)), {
+        angleMode: this.#angleMode,
+        ans: this.#previousAnswer(),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Whether an exact value is worth showing.
+   *
+   * A form that reads the same as the decimal is skipped, which covers plain
+   * integers without needing a rule of its own: 2 + 2 is "4" both ways. Where
+   * they differ the exact form is shown, including the integer 0 that the
+   * float missed.
+   *
+   * Deliberately *not* cross-checked against the float. Where the two differ
+   * it is the float that has drifted -- sin(180^5 degrees) is exactly 0, while
+   * the float says -2.4e-7 -- so rejecting the exact value on disagreement
+   * would discard the correct answer in favour of the wrong one. A tolerance
+   * loose enough to accept that drift could not catch a real bug either. The
+   * exact path is guarded by its own tests instead.
+   */
+  #displayableExact(value: ExactValue | null, decimal: string): string | null {
+    if (value === null) return null;
+    const display = toExactDisplay(value);
+    return display === decimal ? null : display;
   }
 
   /** Clear the error and start a new expression when one has just finished. */
@@ -470,6 +574,17 @@ export class Calculator {
    */
   #continueFromResult(bracketNegative = false): void {
     if (!this.#justComputed || this.#result === null) return;
+
+    // A non-integer exact value is carried in a form the parser can read back,
+    // so continuing from a displayed 1/3 and multiplying by 3 gives exactly 1.
+    // It is already bracketed, so it needs no help with a negative. A plain
+    // integer is left to the decimal path below, which does handle that.
+    if (this.#exactValue !== null && !isExactInteger(this.#exactValue)) {
+      this.#buffer.replace(toExactExpression(this.#exactValue));
+      this.#justComputed = false;
+      return;
+    }
+
     const carried =
       bracketNegative && this.#result.startsWith("-")
         ? `(${this.#result})`

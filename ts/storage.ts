@@ -45,7 +45,16 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
     } = {};
 
     if (Array.isArray(record["history"])) {
-      state.history = record["history"].filter(isHistoryEntry);
+      state.history = record["history"]
+        .filter(isValidHistoryEntry)
+        .map((entry) => ({
+          expression: entry.expression,
+          result: entry.result,
+          // Entries saved before recall existed fall back to the shown value.
+          recall: typeof entry.recall === "string" && entry.recall !== ""
+            ? entry.recall
+            : entry.result,
+        }));
     }
     if (typeof record["memory"] === "number" && Number.isFinite(record["memory"])) {
       state.memory = record["memory"];
@@ -102,7 +111,9 @@ export function clearState(storage: Storage | null = safeStorage()): void {
   }
 }
 
-function isHistoryEntry(value: unknown): value is HistoryEntry {
+function isValidHistoryEntry(
+  value: unknown
+): value is { expression: string; result: string; recall?: unknown } {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return (

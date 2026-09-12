@@ -2,6 +2,7 @@ import { TokenKind } from "@/enums/token-kind.ts";
 import type { Token } from "@/types/token.ts";
 import type { Operation } from "@/types/operation.ts";
 import type { FunctionName } from "@/types/function-name.ts";
+import type { ConstantName } from "@/types/constant-name.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 
@@ -61,9 +62,16 @@ const FUNCTIONS: Record<FunctionName, (value: number, angleMode: AngleMode) => n
 
 export const FUNCTION_NAMES = Object.keys(FUNCTIONS) as FunctionName[];
 
-const CONSTANTS: Readonly<Record<string, number>> = {
+/** The spellings the tokenizer accepts, and which constant each names. */
+const CONSTANT_NAMES: Readonly<Record<string, ConstantName>> = {
+  pi: "pi",
+  "π": "pi",
+  e: "e",
+};
+
+/** What each constant is worth in floating point. */
+export const CONSTANT_VALUES: Readonly<Record<ConstantName, number>> = {
   pi: Math.PI,
-  "π": Math.PI,
   e: Math.E,
 };
 
@@ -75,7 +83,7 @@ const OPERATIONS = ["+", "-", "*", "÷", "^"] as const satisfies readonly Operat
  */
 const KNOWN_NAMES: readonly string[] = [
   ...FUNCTION_NAMES,
-  ...Object.keys(CONSTANTS),
+  ...Object.keys(CONSTANT_NAMES),
   "x",
   "ans",
 ].sort((a, b) => b.length - a.length);
@@ -143,6 +151,7 @@ export function tokenize(input: string): Token[] {
       last.kind === TokenKind.Number ||
       last.kind === TokenKind.Variable ||
       last.kind === TokenKind.Ans ||
+      last.kind === TokenKind.Constant ||
       last.kind === TokenKind.RightParen
     ) {
       tokens.push({ kind: TokenKind.Operator, operator: "*" });
@@ -255,11 +264,11 @@ export function tokenize(input: string): Token[] {
           tokens.push({ kind: TokenKind.Ans });
           continue;
         }
-        const constant = CONSTANTS[name];
+        const constant = CONSTANT_NAMES[name];
         // KNOWN_NAMES is built from these three sources, so this is
         // unreachable -- but a throw beats silently evaluating to zero.
         if (constant === undefined) throw new Error(`Unknown name "${name}"`);
-        tokens.push({ kind: TokenKind.Number, value: constant });
+        tokens.push({ kind: TokenKind.Constant, name: constant });
       }
 
       lastWasLiteral = false;
@@ -294,6 +303,7 @@ export function toRpn(tokens: readonly Token[]): Token[] {
       case TokenKind.Number:
       case TokenKind.Variable:
       case TokenKind.Ans:
+      case TokenKind.Constant:
         output.push(token);
         break;
 
@@ -390,6 +400,10 @@ export function evaluateRpn(rpn: readonly Token[], context: EvalContext = {}): n
       case TokenKind.Ans:
         if (ans === undefined) throw new Error("No previous answer");
         stack.push(ans);
+        break;
+
+      case TokenKind.Constant:
+        stack.push(CONSTANT_VALUES[token.name]);
         break;
 
       case TokenKind.UnaryMinus:
