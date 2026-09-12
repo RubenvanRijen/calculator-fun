@@ -15,6 +15,7 @@ import {
 import { boundText, windowAround } from "@/ui/graph-window.ts";
 import { traceText } from "@/ui/graph-readout.ts";
 import { search } from "@/ui/graph-search.ts";
+import { queryIn } from "@/ui/query.ts";
 import type { FunctionSeries } from "@/function-series.ts";
 import type { MultiPlotResult } from "@/interfaces/multi-plot-result.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
@@ -50,15 +51,14 @@ export function setupGraphPanel(
   frameTo: (points: readonly PlotPoint[]) => void;
   showScatter: (on: boolean) => void;
 } {
-  const query = <T extends HTMLElement>(selector: string): T | null =>
-    root.querySelector<T>(selector);
+  const query = queryIn(root);
 
   const inputs = Array.from({ length: SERIES_COUNT }, (_, index) =>
     query<HTMLInputElement>(`[data-graph-input="${index}"]`)
   );
   const minInput = query<HTMLInputElement>("[data-graph-min]");
   const maxInput = query<HTMLInputElement>("[data-graph-max]");
-  const svg = root.querySelector<SVGSVGElement>("[data-graph-svg]");
+  const svg = query<SVGSVGElement>("[data-graph-svg]");
   const errorElement = query("[data-graph-error]");
   const readout = query("[data-graph-readout]");
   const panel = query('[data-panel="graph"]');

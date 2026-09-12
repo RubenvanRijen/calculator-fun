@@ -1,6 +1,7 @@
 import { applyMatrixOp, isMatrixOp } from "@/ui/matrix-operations.ts";
 import { MATRIX_NAMES, MAX_SIZE } from "@/matrices.ts";
 import { readNumber } from "@/ui/read-number.ts";
+import { queryIn } from "@/ui/query.ts";
 import type { MatrixStore } from "@/matrices.ts";
 import type { Matrix } from "@/types/matrix.ts";
 import type { MatrixOp } from "@/types/matrix-op.ts";
@@ -35,8 +36,7 @@ export function setupMatrixPanel(
   signal: AbortSignal,
   store: MatrixStore
 ): { render: () => void } {
-  const query = <T extends HTMLElement>(selector: string): T | null =>
-    root.querySelector<T>(selector);
+  const query = queryIn(root);
 
   const panel = query('[data-panel="matrix"]');
   const result = query("[data-matrix-result]");

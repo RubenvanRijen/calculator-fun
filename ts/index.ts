@@ -12,6 +12,7 @@ import { StatLists } from "@/stat-lists.ts";
 import { setupMatrixPanel } from "@/ui/matrix-panel.ts";
 import { MatrixStore } from "@/matrices.ts";
 import { FunctionSeries, SERIES_COUNT } from "@/function-series.ts";
+import { queryIn } from "@/ui/query.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
 import type { Theme } from "@/types/theme.ts";
@@ -25,6 +26,7 @@ import type { Theme } from "@/types/theme.ts";
  */
 export function setupCalculator(root: Document | HTMLElement): CalculatorHandle {
   const doc = root instanceof Document ? root : root.ownerDocument;
+  const query = queryIn(root);
 
   // Every listener is registered against this signal, so destroy() is a single
   // abort rather than a list that drifts out of date. `root` and `doc` outlive
@@ -46,7 +48,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   const matrices = new MatrixStore(saved.matrices ?? {});
 
   let theme: Theme = saved.theme ?? preferredTheme();
-  const themeIcon = root.querySelector<HTMLElement>("[data-theme-icon]");
+  const themeIcon = query("[data-theme-icon]");
 
   const applyCurrentTheme = (): void => {
     applyTheme(theme, doc.documentElement);
@@ -106,7 +108,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     // document order would put Y3's text into Y2 the day the markup is
     // reordered, and the panel would then disagree with the model.
     Array.from({ length: SERIES_COUNT }, (_, index) =>
-      root.querySelector<HTMLInputElement>(`[data-graph-input="${index}"]`)?.value ?? ""
+      query<HTMLInputElement>(`[data-graph-input="${index}"]`)?.value ?? ""
     )
   );
   const graphContext = (): EvalContext => ({
@@ -165,7 +167,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     { signal }
   );
 
-  root.querySelector<HTMLElement>("[data-theme-toggle]")?.addEventListener(
+  query("[data-theme-toggle]")?.addEventListener(
     "click",
     () => {
       theme = otherTheme(theme);
@@ -175,7 +177,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     { signal }
   );
 
-  root.querySelector<HTMLElement>("[data-history-clear]")?.addEventListener(
+  query("[data-history-clear]")?.addEventListener(
     "click",
     () => {
       calculator.clearHistory();

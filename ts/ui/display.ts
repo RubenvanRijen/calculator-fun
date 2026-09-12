@@ -1,3 +1,4 @@
+import { queryIn } from "@/ui/query.ts";
 import type { Calculator } from "@/calculator.ts";
 
 /**
@@ -14,8 +15,7 @@ export class Display {
   readonly #exact: HTMLElement | null;
 
   constructor(root: Document | HTMLElement) {
-    const query = <T extends HTMLElement>(selector: string): T | null =>
-      root.querySelector<T>(selector);
+    const query = queryIn(root);
 
     const expression = query("[data-expression]");
     const result = query("[data-result]");

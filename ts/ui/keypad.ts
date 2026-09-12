@@ -1,4 +1,5 @@
 import { isOperation } from "@/expression.ts";
+import { queryIn } from "@/ui/query.ts";
 import type { Calculator } from "@/calculator.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 
@@ -45,7 +46,7 @@ export class Keypad {
     calculator: Calculator,
     onChange: () => void
   ) {
-    const element = root.querySelector<HTMLElement>("[data-keypad]");
+    const element = queryIn(root)("[data-keypad]");
     // Every key is wired through this wrapper, so its absence would leave a
     // page where nothing responds and nothing explains why.
     if (!element) throw new Error("Calculator markup is missing [data-keypad].");

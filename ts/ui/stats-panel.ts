@@ -1,5 +1,6 @@
 import { summarise, regress } from "@/stats.ts";
 import { LIST_NAMES } from "@/stat-lists.ts";
+import { queryIn } from "@/ui/query.ts";
 import type { StatLists } from "@/stat-lists.ts";
 import type { OneVarStats } from "@/interfaces/one-var-stats.ts";
 
@@ -41,11 +42,10 @@ export function setupStatsPanel(
   /** Hands the scatter and its fit to the graph, and shows it. */
   onPlot: (fit: string) => void
 ): { render: () => void } {
-  const query = <T extends HTMLElement>(selector: string): T | null =>
-    root.querySelector<T>(selector);
+  const query = queryIn(root);
 
-  const body = root.querySelector<HTMLTableSectionElement>("[data-stats-body]");
-  const summary = root.querySelector<HTMLTableSectionElement>("[data-stats-summary]");
+  const body = query<HTMLTableSectionElement>("[data-stats-body]");
+  const summary = query<HTMLTableSectionElement>("[data-stats-summary]");
   const fitLine = query("[data-stats-fit]");
   const panel = query('[data-panel="stats"]');
 

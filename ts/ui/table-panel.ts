@@ -1,5 +1,6 @@
 import { compileCurve } from "@/graph.ts";
 import { readNumber } from "@/ui/read-number.ts";
+import { queryIn } from "@/ui/query.ts";
 import type { FunctionSeries } from "@/function-series.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 
@@ -50,13 +51,12 @@ export function setupTablePanel(
   /** Supplies stored values, so "A*x" tabulates like it plots. */
   contextOf: () => EvalContext
 ): { render: () => void } {
-  const query = <T extends HTMLElement>(selector: string): T | null =>
-    root.querySelector<T>(selector);
+  const query = queryIn(root);
 
   const startInput = query<HTMLInputElement>("[data-table-start]");
   const stepInput = query<HTMLInputElement>("[data-table-step]");
-  const head = root.querySelector<HTMLTableRowElement>("[data-table-head]");
-  const body = root.querySelector<HTMLTableSectionElement>("[data-table-body]");
+  const head = query<HTMLTableRowElement>("[data-table-head]");
+  const body = query<HTMLTableSectionElement>("[data-table-body]");
   const empty = query("[data-table-empty]");
   const panel = query('[data-panel="table"]');
 
