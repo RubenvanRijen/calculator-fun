@@ -10,6 +10,7 @@ import type { ExactValue } from "@/interfaces/exact-value.ts";
 import { ExpressionBuffer } from "@/expression-buffer.ts";
 import { HistoryLog } from "@/history-log.ts";
 import { MemoryRegister } from "@/memory-register.ts";
+import { EntryRecall } from "@/entry-recall.ts";
 import {
   balanceParentheses,
   expectsOperand,
@@ -24,9 +25,6 @@ import type { Operation } from "@/types/operation.ts";
 import type { HistoryEntry } from "@/interfaces/history-entry.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 import type { RegisterName } from "@/types/register-name.ts";
-
-/** How many past expressions the up/down arrows can walk back through. */
-const MAX_ENTRIES = 50;
 
 /**
  * The calculator, as a facade over four collaborators: the expression being
@@ -44,6 +42,7 @@ export class Calculator {
   readonly #buffer = new ExpressionBuffer();
   readonly #history = new HistoryLog();
   readonly #memory = new MemoryRegister();
+  readonly #recall = new EntryRecall();
 
   /** Set when the last action could not be completed. Cleared on next input. */
   error: string | null = null;
@@ -71,10 +70,6 @@ export class Calculator {
   #usedMixed = false;
   /** Whether the answer on screen should be written as a mixed number. */
   #showingMixed = false;
-  /** Expressions that were computed, oldest first, for up/down recall. */
-  #entries: string[] = [];
-  /** Where in #entries the user is; equal to its length when not browsing. */
-  #entryIndex = 0;
 
   /** The expression as typed, e.g. "12+3*4". */
   get expression(): string {
@@ -182,19 +177,17 @@ export class Calculator {
 
   /** Step back through previously computed expressions. */
   recallPrevious(): boolean {
-    if (this.#entries.length === 0) return false;
+    if (this.#recall.isEmpty) return false;
     this.error = null;
-    this.#entryIndex = Math.max(0, this.#entryIndex - 1);
-    this.#loadEntry();
+    this.#loadEntry(this.#recall.previous());
     return true;
   }
 
   /** Step forward again; past the newest entry the expression is cleared. */
   recallNext(): boolean {
-    if (this.#entries.length === 0) return false;
+    if (this.#recall.isEmpty) return false;
     this.error = null;
-    this.#entryIndex = Math.min(this.#entries.length, this.#entryIndex + 1);
-    this.#loadEntry();
+    this.#loadEntry(this.#recall.next());
     return true;
   }
 
@@ -280,8 +273,7 @@ export class Calculator {
     this.#history.restore(state.history ?? []);
     this.#memory.value = state.memory ?? 0;
     this.#lastAnswer = state.lastAnswer ?? null;
-    this.#entries = [...(state.entries ?? [])].slice(-MAX_ENTRIES);
-    this.#entryIndex = this.#entries.length;
+    this.#recall.restore(state.entries ?? []);
     this.#registers = { ...(state.registers ?? {}) };
   }
 
@@ -292,13 +284,13 @@ export class Calculator {
 
   /** The expressions the arrows walk through, for persistence. */
   get entries(): readonly string[] {
-    return this.#entries;
+    return this.#recall.entries;
   }
 
   /** Reset the current entry. Memory, history and recall deliberately survive. */
   clear(): void {
     this.#buffer.clear();
-    this.#entryIndex = this.#entries.length;
+    this.#recall.stopBrowsing();
     this.error = null;
     this.#result = null;
     this.#preview = "";
@@ -539,8 +531,7 @@ export class Calculator {
   /** Empty the history panel, and the entries the arrows walk through. */
   clearHistory(): void {
     this.#history.clear();
-    this.#entries = [];
-    this.#entryIndex = 0;
+    this.#recall.clear();
   }
 
   /**
@@ -606,13 +597,7 @@ export class Calculator {
       this.#exactValue !== null ? toExactExpression(this.#exactValue) : result
     );
 
-    // Keep the entry list free of consecutive duplicates, so pressing = twice
-    // does not fill it with the same line.
-    if (this.#entries[this.#entries.length - 1] !== expression) {
-      this.#entries.push(expression);
-      if (this.#entries.length > MAX_ENTRIES) this.#entries.shift();
-    }
-    this.#entryIndex = this.#entries.length;
+    this.#recall.add(expression);
 
     this.#buffer.replace(expression);
     this.#result = result;
@@ -822,9 +807,8 @@ export class Calculator {
     }
   }
 
-  /** Load whichever entry #entryIndex points at; past the end, clear. */
-  #loadEntry(): void {
-    const entry = this.#entries[this.#entryIndex];
+  /** Put an entry in the buffer; nothing to put there means clear it. */
+  #loadEntry(entry: string | undefined): void {
     if (entry === undefined) {
       this.#buffer.clear();
     } else {
