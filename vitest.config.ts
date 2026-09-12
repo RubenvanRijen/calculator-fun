@@ -10,7 +10,9 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["ts/**/*.ts"],
-      exclude: ["**/*.test.*"],
+      // types/ and interfaces/ hold only declarations, which erase to empty
+      // modules -- they would otherwise report 0% and drag the total down.
+      exclude: ["**/*.test.*", "ts/types/**", "ts/interfaces/**"],
       reporter: ["text", "lcov"],
       thresholds: {
         lines: 90,

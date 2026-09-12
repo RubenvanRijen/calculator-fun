@@ -1,3 +1,51 @@
+/* Light is the default; dark is opted into with data-theme on <html>. Both
+   palettes are defined as tokens so nothing below needs to know the theme. */
+:root {
+    --bg: linear-gradient(to right, #fffb00, #ff00aa);
+    --panel: rgba(0, 0, 0, .75);
+    --panel-text: #fff;
+    --key: rgba(255, 255, 255, .75);
+    --key-hover: rgba(255, 255, 255, .92);
+    --key-press: #fff;
+    --key-text: #1a1a1a;
+    --key-border: rgba(255, 255, 255, .9);
+    --operator: rgba(255, 255, 255, .55);
+    --equals: rgba(255, 60, 170, .85);
+    --equals-text: #fff;
+    --accent: #ff00aa;
+    --plot-line: #ff2fb4;
+    --muted: rgba(255, 255, 255, .6);
+    --error: #ff7b7b;
+    --page-text: rgba(0, 0, 0, .75);
+    --chip: rgba(255, 255, 255, .18);
+}
+
+:root[data-theme="dark"] {
+    --bg: linear-gradient(to right, #14082b, #3a0a4d);
+    --panel: rgba(0, 0, 0, .55);
+    --panel-text: #f2e9ff;
+    --key: rgba(255, 255, 255, .10);
+    --key-hover: rgba(255, 255, 255, .18);
+    --key-press: rgba(255, 255, 255, .3);
+    --key-text: #f2e9ff;
+    --key-border: rgba(255, 255, 255, .12);
+    --operator: rgba(255, 255, 255, .05);
+    --equals: rgba(255, 0, 170, .75);
+    --equals-text: #fff;
+    --accent: #ff4fc3;
+    --plot-line: #ff4fc3;
+    --muted: rgba(242, 233, 255, .55);
+    --error: #ff9c9c;
+    --page-text: rgba(242, 233, 255, .8);
+    --chip: rgba(255, 255, 255, .12);
+}
+
+/* A class that sets `display` would otherwise beat the [hidden] attribute,
+   leaving hidden panels on screen. */
+[hidden] {
+    display: none !important;
+}
+
 *,
 *::before,
 *::after {
@@ -7,73 +55,121 @@
 }
 
 body {
-    padding: 0;
     margin: 0;
     min-height: 100vh;
-    background: linear-gradient(to right, #fffb00, #ff00aa);
+    background: var(--bg);
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 16px;
-    padding: 24px 16px;
+    gap: 14px;
+    padding-block: 18px;
+    padding-inline: 16px;
+    color: var(--page-text);
 }
 
-/* Calculator and history sit side by side, and stack on narrow screens. */
+.topbar {
+    width: min(100%, 620px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.topbar-title {
+    margin: 0;
+    font-size: 1rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.theme-toggle {
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 6px 10px;
+    color: var(--page-text);
+    background: var(--chip);
+    border: 1px solid var(--key-border);
+    border-radius: 6px;
+}
+
+.theme-toggle:hover {
+    background: var(--key-hover);
+}
+
 .app {
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    gap: 20px;
+    gap: 18px;
     flex-wrap: wrap;
 }
 
+/* --- keypad ----------------------------------------------------------- */
+
 .calculator-grid {
     display: grid;
-    grid-template-columns: repeat(4, 90px);
-    grid-template-rows: minmax(110px, auto) repeat(6, 72px);
+    grid-template-columns: repeat(4, 78px);
+    grid-template-rows: minmax(104px, auto) repeat(8, 56px);
 }
 
 .calculator-grid>button {
     cursor: pointer;
-    font-size: 1.75rem;
-    border: 1px solid white;
+    font-size: 1.4rem;
+    color: var(--key-text);
+    border: 1px solid var(--key-border);
     outline: none;
-    background-color: rgba(255, 255, 255, .75);
-    transition: background-color .12s ease;
+    background-color: var(--key);
+    transition: background-color .12s ease, transform .08s ease;
 }
 
 .calculator-grid>button:hover {
-    background-color: rgba(255, 255, 255, .9);
+    background-color: var(--key-hover);
 }
 
 .calculator-grid>button:focus-visible {
-    outline: 3px solid rgba(0, 0, 0, .55);
+    outline: 3px solid var(--accent);
     outline-offset: -3px;
 }
 
-/* Applied briefly when a key is driven from the keyboard. */
 .calculator-grid>button.is-pressed {
-    background-color: #fff;
-    transform: scale(.96);
+    background-color: var(--key-press);
+    transform: scale(.95);
 }
 
-.key-memory {
-    font-size: 1.15rem;
+.key-small {
+    font-size: 1rem;
+}
+
+.key-action {
+    font-size: 1.05rem;
+}
+
+.key-operator {
+    background-color: var(--operator);
+}
+
+.key-equals {
+    background-color: var(--equals);
+    color: var(--equals-text);
 }
 
 .span-two {
     grid-column: span 2;
 }
 
+/* --- display ---------------------------------------------------------- */
+
 .output {
     grid-column: 1 / -1;
-    background-color: rgba(0, 0, 0, .75);
+    background-color: var(--panel);
+    color: var(--panel-text);
     display: flex;
-    align-items: flex-end;
-    justify-content: space-around;
     flex-direction: column;
-    padding: 15px;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 12px 14px;
     word-wrap: break-word;
     word-break: break-all;
 }
@@ -82,80 +178,112 @@ body {
     width: 100%;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    gap: 6px;
 }
 
-.memory-indicator {
-    color: #fffb00;
-    font-size: .9rem;
+.badge {
+    color: var(--accent);
+    font-size: .72rem;
     letter-spacing: .08em;
-    border: 1px solid rgba(255, 251, 0, .6);
+    border: 1px solid currentColor;
     border-radius: 3px;
     padding: 0 5px;
+    flex: none;
 }
 
-.output .previous-operand {
-    color: rgba(255, 255, 255, .75);
-    font-size: 1.5rem;
+.expression {
     margin-left: auto;
+    color: var(--muted);
+    font-size: 1.05rem;
+    text-align: right;
 }
 
-.output .current-operand {
-    color: white;
-    font-size: 2.5rem;
+.result {
+    color: var(--panel-text);
+    font-size: 2.2rem;
+    line-height: 1.1;
 }
 
 .error {
-    color: #ff8a8a;
-    font-size: .95rem;
-    align-self: flex-end;
+    color: var(--error);
+    font-size: .85rem;
+    margin: 0;
 }
 
-/* --- history --------------------------------------------------------- */
+/* --- side panel ------------------------------------------------------- */
 
-.history {
-    width: 240px;
-    max-height: 542px;
+.panel {
+    width: 280px;
     display: flex;
     flex-direction: column;
-    background-color: rgba(0, 0, 0, .75);
-    color: white;
-    padding: 12px;
+    background-color: var(--panel);
+    color: var(--panel-text);
 }
 
-.history-header {
+.tabs {
+    display: flex;
+}
+
+.tab {
+    cursor: pointer;
+    flex: 1;
+    padding: 10px 8px;
+    font-size: .9rem;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+}
+
+.tab:hover {
+    color: var(--panel-text);
+}
+
+.tab.is-active {
+    color: var(--panel-text);
+    border-bottom-color: var(--accent);
+}
+
+.panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    min-height: 0;
+}
+
+.panel-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin-bottom: 8px;
 }
 
-.history-title {
-    margin: 0;
-    font-size: 1.1rem;
-    letter-spacing: .04em;
-}
-
-.history-clear {
-    cursor: pointer;
+.panel-title {
     font-size: .8rem;
-    color: white;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.link-button {
+    cursor: pointer;
+    font-size: .78rem;
+    color: var(--panel-text);
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, .5);
+    border: 1px solid var(--key-border);
     border-radius: 3px;
     padding: 3px 8px;
 }
 
-.history-clear:hover {
-    background-color: rgba(255, 255, 255, .15);
+.link-button:hover {
+    background-color: var(--chip);
 }
 
-.history-empty {
+.muted {
     margin: 0;
-    color: rgba(255, 255, 255, .55);
-    font-size: .9rem;
+    color: var(--muted);
+    font-size: .88rem;
 }
 
 .history-list {
@@ -163,6 +291,7 @@ body {
     margin: 0;
     padding: 0;
     overflow-y: auto;
+    max-height: 420px;
 }
 
 .history-entry {
@@ -172,54 +301,162 @@ body {
     flex-direction: column;
     align-items: flex-end;
     gap: 2px;
-    padding: 7px 8px;
+    padding: 7px 4px;
     background: transparent;
     border: none;
-    border-bottom: 1px solid rgba(255, 255, 255, .15);
+    border-bottom: 1px solid var(--key-border);
     color: inherit;
     text-align: right;
 }
 
 .history-entry:hover {
-    background-color: rgba(255, 255, 255, .12);
+    background-color: var(--chip);
 }
 
 .history-expression {
-    color: rgba(255, 255, 255, .7);
-    font-size: .85rem;
+    color: var(--muted);
+    font-size: .82rem;
 }
 
 .history-result {
-    color: white;
-    font-size: 1.2rem;
+    color: var(--panel-text);
+    font-size: 1.15rem;
 }
 
-/* --- keyboard hint ---------------------------------------------------- */
+/* --- graph ------------------------------------------------------------ */
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.field-inline {
+    flex: 1;
+    min-width: 0;
+}
+
+.field-label {
+    font-size: .75rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.field-input {
+    width: 100%;
+    min-width: 0;
+    font-size: .95rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--panel-text);
+    background: var(--chip);
+    border: 1px solid var(--key-border);
+    border-radius: 4px;
+    padding: 6px 8px;
+}
+
+.field-input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+}
+
+.range {
+    display: flex;
+    gap: 8px;
+}
+
+.examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.chip {
+    cursor: pointer;
+    font-size: .8rem;
+    color: var(--panel-text);
+    background: var(--chip);
+    border: 1px solid var(--key-border);
+    border-radius: 999px;
+    padding: 3px 10px;
+}
+
+.chip:hover {
+    background-color: var(--key-hover);
+    color: var(--key-text);
+}
+
+.plot-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.plot {
+    width: 100%;
+    height: 200px;
+    display: block;
+    background: var(--chip);
+    border: 1px solid var(--key-border);
+    border-radius: 4px;
+}
+
+.plot-axis {
+    stroke: var(--muted);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+.plot-line {
+    fill: none;
+    stroke: var(--plot-line);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+}
+
+.plot-marker {
+    fill: var(--plot-line);
+    stroke: var(--panel-text);
+    stroke-width: 1;
+}
+
+.readout {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .8rem;
+    color: var(--muted);
+    min-height: 1.2em;
+}
+
+/* --- hint ------------------------------------------------------------- */
 
 .hint {
     margin: 0;
-    color: rgba(0, 0, 0, .7);
-    font-size: .85rem;
+    color: var(--page-text);
+    font-size: .8rem;
     text-align: center;
+    max-width: 620px;
 }
 
 .hint kbd {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    background: rgba(255, 255, 255, .7);
-    border: 1px solid rgba(0, 0, 0, .3);
+    background: var(--chip);
+    border: 1px solid var(--key-border);
     border-radius: 3px;
     padding: 1px 5px;
 }
 
-@media (max-width: 620px) {
+@media (max-width: 640px) {
     .calculator-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-template-rows: minmax(110px, auto) repeat(6, 64px);
-        width: min(100%, 360px);
+        grid-template-rows: minmax(104px, auto) repeat(8, 52px);
+        width: min(100%, 340px);
     }
 
-    .history {
-        width: min(100%, 360px);
-        max-height: 260px;
+    .panel {
+        width: min(100%, 340px);
+    }
+
+    .history-list {
+        max-height: 220px;
     }
 }

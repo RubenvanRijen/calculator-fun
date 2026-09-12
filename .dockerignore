@@ -8,3 +8,7 @@ coverage
 docker-compose.yml
 .dockerignore
 README.md
+e2e
+playwright.config.ts
+test-results
+playwright-report
