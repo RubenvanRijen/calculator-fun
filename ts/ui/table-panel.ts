@@ -1,6 +1,7 @@
 import { compileCurve } from "@/graph.ts";
 import { readNumber } from "@/ui/read-number.ts";
 import { queryIn } from "@/ui/query.ts";
+import { significant } from "@/format.ts";
 import type { FunctionSeries } from "@/function-series.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 
@@ -33,7 +34,7 @@ function xDigits(start: number, step: number): number {
 function cell(value: number, digits = 8): string {
   if (Number.isNaN(value)) return "—";
   if (!Number.isFinite(value)) return value > 0 ? "∞" : "-∞";
-  return parseFloat(value.toPrecision(digits)).toString();
+  return String(significant(value, digits));
 }
 
 /**

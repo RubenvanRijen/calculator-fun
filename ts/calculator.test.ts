@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Calculator, formatExpression, formatOperand, trailingOperation } from "@/calculator.ts";
+import { significant } from "@/format.ts";
 import type { Operation } from "@/types/operation.ts";
 
 /** Drive the calculator one keypress at a time, as a user would. */
@@ -1438,6 +1439,43 @@ describe("formatOperand", () => {
     ["9.9999999998e+21", "9.9999999998e+21"],
   ])("formats %j as %j", (input, expected) => {
     expect(formatOperand(input)).toBe(expected);
+  });
+});
+
+describe("significant", () => {
+  it("rounds to the number of digits asked for", () => {
+    expect(significant(3.14159265, 4)).toBe(3.142);
+    expect(significant(123456789, 4)).toBe(123500000);
+    expect(significant(0.000123456, 3)).toBe(0.000123);
+  });
+
+  it("drops the zeros the rounding leaves behind", () => {
+    // The whole point of reading the string back as a number: toPrecision
+    // alone answers "1.5000000", which is what four displays would show.
+    expect((1.5).toPrecision(8)).toBe("1.5000000");
+    expect(String(significant(1.5, 8))).toBe("1.5");
+    expect(String(significant(2, 12))).toBe("2");
+  });
+
+  it("keeps the zeros that are part of the number", () => {
+    // The zeros in 1000 are the number; the ones in "1.5000000" are padding.
+    // Anything that takes them off by looking at the end of the string turns
+    // a table's x column from 1000 into 1.
+    expect(significant(10, 2)).toBe(10);
+    expect(significant(1000, 4)).toBe(1000);
+    expect(significant(1000, 8)).toBe(1000);
+    expect(significant(1.05, 3)).toBe(1.05);
+  });
+
+  it("leaves a number alone when it is shorter than the digits asked for", () => {
+    expect(significant(7, 4)).toBe(7);
+    expect(significant(0.25, 8)).toBe(0.25);
+  });
+
+  it("takes the float dust off a number that has some", () => {
+    // What roundResult wants it for: 0.1 + 0.2 is 0.30000000000000004, which
+    // takes seventeen digits to say, so twelve of them round it back to 0.3.
+    expect(significant(0.1 + 0.2, 12)).toBe(0.3);
   });
 });
 

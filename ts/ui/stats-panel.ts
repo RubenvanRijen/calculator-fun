@@ -1,6 +1,7 @@
 import { summarise, regress } from "@/stats.ts";
 import { LIST_NAMES } from "@/stat-lists.ts";
 import { queryIn } from "@/ui/query.ts";
+import { significant } from "@/format.ts";
 import type { StatLists } from "@/stat-lists.ts";
 import type { OneVarStats } from "@/interfaces/one-var-stats.ts";
 
@@ -8,7 +9,7 @@ import type { OneVarStats } from "@/interfaces/one-var-stats.ts";
 function figure(value: number | null): string {
   if (value === null) return "—";
   if (!Number.isFinite(value)) return "—";
-  return parseFloat(value.toPrecision(8)).toString();
+  return String(significant(value, 8));
 }
 
 /** The rows of the summary, in the order the hardware lists them. */

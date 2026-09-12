@@ -1,3 +1,5 @@
+import { significant } from "@/format.ts";
+
 /**
  * A window that holds `values` with a little room around them.
  *
@@ -20,5 +22,5 @@ export function windowAround(values: readonly number[]): { min: number; max: num
  * back out again lands where it started.
  */
 export function boundText(value: number): string {
-  return String(parseFloat(value.toPrecision(6)));
+  return String(significant(value, 6));
 }

@@ -1,6 +1,8 @@
+import { significant } from "@/format.ts";
+
 /** Short, readable numbers for the readout. */
 export function trim(value: number): string {
-  return parseFloat(value.toPrecision(4)).toString();
+  return String(significant(value, 4));
 }
 
 /**

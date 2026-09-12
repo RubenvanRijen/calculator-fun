@@ -2,6 +2,7 @@ import { applyMatrixOp, isMatrixOp } from "@/ui/matrix-operations.ts";
 import { MATRIX_NAMES, MAX_SIZE } from "@/matrices.ts";
 import { readNumber } from "@/ui/read-number.ts";
 import { queryIn } from "@/ui/query.ts";
+import { significant } from "@/format.ts";
 import type { MatrixStore } from "@/matrices.ts";
 import type { Matrix } from "@/types/matrix.ts";
 import type { MatrixOp } from "@/types/matrix-op.ts";
@@ -21,7 +22,7 @@ function figure(value: number): string {
   if (Number.isInteger(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER) {
     return String(value);
   }
-  return parseFloat(value.toPrecision(8)).toString();
+  return String(significant(value, 8));
 }
 
 /**

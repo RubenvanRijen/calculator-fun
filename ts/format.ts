@@ -54,13 +54,30 @@ export function operatorAt(text: string, index: number): string | null {
 }
 
 /**
+ * Round to `digits` significant digits, and drop the zeros that leaves behind.
+ *
+ * toPrecision on its own answers with a string that keeps them -- (1.5)
+ * .toPrecision(8) is "1.5000000" -- and reading that back as a number is what
+ * takes them off again. Every display in the app wants the pair, at five
+ * different digit counts, and it had been written three different ways: with
+ * .toString(), with String(), and bare.
+ *
+ * `digits` has to be 1 to 100 or toPrecision throws. Every caller but one
+ * passes a constant; the table works its count out from the step and clamps it
+ * before it gets here.
+ */
+export function significant(value: number, digits: number): number {
+  return parseFloat(value.toPrecision(digits));
+}
+
+/**
  * Binary floating point makes 0.1 + 0.2 come out as 0.30000000000000004.
  * Twelve significant digits is well inside a double's ~15-17 digits of
  * precision, so this trims the noise without changing any honest result.
  */
 export function roundResult(value: number): number {
   if (!Number.isFinite(value)) return value;
-  return parseFloat(value.toPrecision(12));
+  return significant(value, 12);
 }
 
 /** True when a "-" appended to `text` would be a sign, not a subtraction. */
