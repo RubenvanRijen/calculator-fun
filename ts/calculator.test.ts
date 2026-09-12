@@ -793,14 +793,22 @@ describe("exact answers", () => {
   let calculator: Calculator;
   beforeEach(() => { calculator = new Calculator(); });
 
+  // Both halves of every one of these, on purpose. resultDisplay shows the
+  // exact form when there is one, so a display that reads 1/2 says nothing
+  // about what the float evaluator made of the same expression -- and it is
+  // the float that Ans carries, that the next calculation continues from, and
+  // that the F<->D key swaps to. Asserting only the spelling let a completely
+  // wrong float answer through every one of these tests.
   it.each([
-    [["1", "÷", "3", "+", "1", "÷", "6", "="], "1/2"],
-    [["√", "8", ")", "="], "2√2"],
-    [["2", "÷", "4", "="], "1/2"],
-    [["π", "÷", "4", "="], "π/4"],
-    [["1", "÷", "√", "2", ")", "="], "√2/2"],
-  ])("computes %j as %s", (keys, expected) => {
-    expect(type(calculator, keys).resultDisplay).toBe(expected);
+    [["1", "÷", "3", "+", "1", "÷", "6", "="], "1/2", 0.5],
+    [["√", "8", ")", "="], "2√2", 2 * Math.SQRT2],
+    [["2", "÷", "4", "="], "1/2", 0.5],
+    [["π", "÷", "4", "="], "π/4", Math.PI / 4],
+    [["1", "÷", "√", "2", ")", "="], "√2/2", Math.SQRT1_2],
+  ])("computes %j as %s", (keys, expected, value) => {
+    const computed = type(calculator, keys);
+    expect(computed.resultDisplay).toBe(expected);
+    expect(computed.lastAnswer).toBeCloseTo(value, 10);
   });
 
   it("shows sin(pi/4) as a surd", () => {
@@ -809,6 +817,7 @@ describe("exact answers", () => {
     calculator.appendFunction("sin");
     type(calculator, ["π", "÷", "4", ")", "="]);
     expect(calculator.resultDisplay).toBe("√2/2");
+    expect(calculator.lastAnswer).toBeCloseTo(Math.SQRT1_2, 10);
   });
 
   describe("which form is shown first", () => {
@@ -816,6 +825,7 @@ describe("exact answers", () => {
       type(calculator, ["1", "÷", "4", "="]);
       expect(calculator.isShowingExact).toBe(true);
       expect(calculator.resultDisplay).toBe("1/4");
+      expect(calculator.lastAnswer).toBe(0.25);
     });
 
     it("keeps the decimal when the question had one", () => {

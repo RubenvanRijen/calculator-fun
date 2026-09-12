@@ -8,16 +8,21 @@ import type { ParsedExpression } from "@/types/parsed-expression.ts";
  * entry. Typing is what fills this: every keystroke asks about a string
  * nobody will ask about again -- a graph field parses what it now holds, and
  * the keypad parses the line so far, twice, once as typed and once with any
- * trailing operator taken off. Thirty-five characters on the keypad is enough
- * churn to push out four plotted curves, and that is fine. Nothing depends on
- * a curve staying: the next redraw reads it again for about four microseconds
- * and puts it back. Tuning this number to try to prevent that would be paying
- * memory for nothing.
+ * trailing operator taken off. So thirty-five characters typed on the keypad
+ * pushes four plotted curves out of a cache this size.
  *
- * What it does have to be is comfortably more than the few strings that are
- * hot at one moment, which is what makes the readings that matter -- a redraw
+ * That is allowed to happen, and the numbers are why. A parse that misses
+ * costs 12us, so the redraw that finds its four curves gone pays 0.05ms, once,
+ * and only after someone has stopped typing on the keypad and gone back to
+ * the chart. An entry is 916 bytes for a forty-character expression, so
+ * holding enough of them to prevent that -- 256, say -- would spend about
+ * 170KB to save a twentieth of a millisecond. The measurements are from this
+ * machine and only have to be right to an order of magnitude to settle it.
+ *
+ * What the number does have to be is comfortably more than the few strings
+ * that are hot at one moment, so that the readings that matter -- a redraw
  * re-reading its curves, an = re-reading the line just typed -- land on
- * something already here.
+ * something already here. Four curves and a line being typed is five.
  */
 const MAX_REMEMBERED = 64;
 

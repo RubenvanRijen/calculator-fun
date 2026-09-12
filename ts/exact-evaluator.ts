@@ -35,6 +35,14 @@ const SINE_TABLE: Readonly<Record<string, ExactValue | undefined>> = {
   "11/6": make(-1n, 2n),
 };
 
+/**
+ * A constant of this module, built once while the module loads.
+ *
+ * Every caller passes literals, so the throw says something about this file
+ * rather than about any input: if it ever fires it fires on import, taking
+ * the whole app down at startup where the tests will see it, rather than part
+ * way through someone's calculation.
+ */
 function make(num: bigint, den = 1n, radicand = 1n): ExactValue {
   const value = Exact.normalise({ num, den, radicand, piPower: 0 });
   if (value === null) throw new Error("unreachable: table entry is normalisable");
@@ -49,16 +57,24 @@ function make(num: bigint, den = 1n, radicand = 1n): ExactValue {
  * that fallback meant a mode added to the union would have been read as
  * radians here while the float path read it correctly -- the two lines of the
  * display disagreeing, with the exact one wrong.
+ *
+ * Three values, not three functions returning them. They are constants and
+ * were being rebuilt on every trigonometric evaluation; sharing one instance
+ * each is safe because every field of an ExactValue is readonly, which is how
+ * SINE_TABLE above has always held its entries.
  */
-const TURN_FRACTION: Readonly<Record<AngleMode, () => ExactValue>> = {
-  rad: () => Exact.ONE,
-  deg: () => make(1n, 180n),
-  grad: () => make(1n, 200n),
+const TURN_FRACTION: Readonly<Record<AngleMode, ExactValue>> = {
+  rad: Exact.ONE,
+  deg: make(1n, 180n),
+  grad: make(1n, 200n),
 };
+
+/** A quarter turn, for the cosine shift below. */
+const QUARTER_TURN = make(1n, 2n);
 
 /** How many radians one unit of the active mode is, as an exact value. */
 function turnFraction(mode: AngleMode): ExactValue {
-  return TURN_FRACTION[mode]();
+  return TURN_FRACTION[mode];
 }
 
 /** The argument as a multiple of π, when it is one. */
@@ -94,7 +110,7 @@ function lookupSine(k: ExactValue): ExactValue | null {
 
 /** cos x = sin(x + π/2). */
 function lookupCosine(k: ExactValue): ExactValue | null {
-  const shifted = Exact.add(k, make(1n, 2n));
+  const shifted = Exact.add(k, QUARTER_TURN);
   return shifted === null ? null : lookupSine(shifted);
 }
 

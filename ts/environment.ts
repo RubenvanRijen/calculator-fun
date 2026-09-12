@@ -118,12 +118,18 @@ export class Environment {
   /**
    * The exact reading of an expression, where it has one.
    *
-   * The catch has nothing reachable to catch: the exact evaluator declines by
+   * The catch has nothing reachable to catch. The exact evaluator declines by
    * answering null -- for a division by zero, a root of a negative, a power
-   * too large to hold -- and the parse failure that used to land here returns
-   * above it now. It stays because of what it protects, not what it has
-   * caught: the exact form is a bonus on top of the answer, and an unguarded
-   * throw from working it out would take the answer down with it.
+   * too large to hold -- the parse failure that used to land here returns
+   * above it now, and its one assertion runs while the module loads rather
+   * than while it evaluates.
+   *
+   * It stays for what it protects rather than what it has caught, and the
+   * reason is where this sits: compute() works the exact form out after its
+   * own try has closed, because an exact form that cannot be found is not an
+   * error to report. A throw from here would not be reported either -- it
+   * would come up out of a keypress, past the answer that had already been
+   * worked out and was about to be shown.
    */
   exactValueOf(expression: string): ExactValue | null {
     const { rpn } = parseExpression(expression);
