@@ -259,6 +259,14 @@ export function tokenize(input: string): Token[] {
       continue;
     }
 
+    // A leading "+" says nothing about the value, so it is dropped rather
+    // than rejected. It is how "(+1/2)" reads -- a mixed number whose whole
+    // part was left out -- and "+5" is not a mistake worth refusing either.
+    if (char === "+" && expectsOperand()) {
+      index += 1;
+      continue;
+    }
+
     // "/" is what a keyboard offers; the button is labelled "÷".
     const operator = char === "/" ? "÷" : char;
     if (isOperation(operator)) {

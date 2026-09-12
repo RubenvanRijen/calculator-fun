@@ -1440,3 +1440,369 @@ describe("formatOperand", () => {
     expect(formatOperand(input)).toBe(expected);
   });
 });
+
+describe("mixed numbers", () => {
+  it("starts a template with the caret in the whole-number place", () => {
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    expect(calculator.expression).toBe("(+/)");
+    expect(calculator.cursor).toBe(1);
+  });
+
+  it("builds a mixed number as the caret is walked along", () => {
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    calculator.appendNumber("2");
+    calculator.moveRight();
+    calculator.appendNumber("1");
+    calculator.moveRight();
+    calculator.appendNumber("3");
+    expect(calculator.expression).toBe("(2+1/3)");
+  });
+
+  it("works out what a mixed number is worth", () => {
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    calculator.appendNumber("2");
+    calculator.moveRight();
+    calculator.appendNumber("1");
+    calculator.moveRight();
+    calculator.appendNumber("3");
+    calculator.compute();
+    // 7/3, which is what 2 and a third is.
+    expect(calculator.resultDisplay).toBe("2 1/3");
+  });
+
+  it("leaves the answer improper when the template was not used", () => {
+    // Typing the same characters by hand is the same sum, but it was not
+    // asked as a mixed number, so it does not come back as one.
+    const calculator = new Calculator();
+    for (const key of "(2+1/3)") calculator.insert(key);
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("7/3");
+  });
+
+  it("answers a mixed question with a mixed number", () => {
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    calculator.appendNumber("2");
+    calculator.moveRight();
+    calculator.appendNumber("1");
+    calculator.moveRight();
+    calculator.appendNumber("3");
+    calculator.chooseOperation("+");
+    calculator.appendNumber("1");
+    calculator.compute();
+    // 2 1/3 + 1 is 3 1/3.
+    expect(calculator.resultDisplay).toBe("3 1/3");
+  });
+
+  it("answers a plain fraction question the plain way", () => {
+    const calculator = new Calculator();
+    calculator.appendFraction();
+    calculator.appendNumber("7");
+    calculator.moveRight();
+    calculator.appendNumber("3");
+    calculator.compute();
+    // The question was not asked as a mixed number, so the answer is not one.
+    expect(calculator.resultDisplay).toBe("7/3");
+  });
+
+  it("forgets the mixed shape on the next entry", () => {
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    calculator.appendNumber("2");
+    calculator.moveRight();
+    calculator.appendNumber("1");
+    calculator.moveRight();
+    calculator.appendNumber("3");
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("2 1/3");
+
+    calculator.appendFraction();
+    calculator.appendNumber("7");
+    calculator.moveRight();
+    calculator.appendNumber("3");
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("7/3");
+  });
+
+  it("has no mixed form to show for a proper fraction", () => {
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    calculator.appendNumber("0");
+    calculator.moveRight();
+    calculator.appendNumber("1");
+    calculator.moveRight();
+    calculator.appendNumber("3");
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("1/3");
+  });
+
+  it("still swaps to the decimal with F<->D", () => {
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    calculator.appendNumber("2");
+    calculator.moveRight();
+    calculator.appendNumber("1");
+    calculator.moveRight();
+    calculator.appendNumber("3");
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("2 1/3");
+
+    calculator.toggleExact();
+    expect(calculator.resultDisplay).toBe("2.33333333333");
+  });
+});
+
+describe("scientific notation entry", () => {
+  it("reads a number with an exponent", () => {
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendExponent();
+    calculator.appendNumber("5");
+    expect(calculator.expression).toBe("2e5");
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("200,000");
+  });
+
+  it("supplies the one when there is no number to attach to", () => {
+    // A bare "e" is Euler's constant, so the key would otherwise be a second
+    // way to type it rather than a power of ten.
+    const calculator = new Calculator();
+    calculator.appendExponent();
+    calculator.appendNumber("5");
+    expect(calculator.expression).toBe("1e5");
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("100,000");
+  });
+
+  it("attaches to a decimal too", () => {
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendNumber(".");
+    calculator.appendNumber("5");
+    calculator.appendExponent();
+    calculator.appendNumber("6");
+    expect(calculator.expression).toBe("2.5e6");
+  });
+
+  it("spaces a minus after a bare e as the subtraction it is", () => {
+    // Reachable by hand rather than by key: "e-3" is Euler less three, and
+    // the e there has no digit in front of it to be the exponent of.
+    const calculator = new Calculator();
+    calculator.insert("e");
+    calculator.chooseOperation("-");
+    calculator.appendNumber("3");
+    expect(calculator.expressionDisplay).toContain("e - 3");
+  });
+
+  it("reads a negative exponent", () => {
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendExponent();
+    calculator.chooseOperation("-");
+    calculator.appendNumber("3");
+    calculator.compute();
+    // Shown exactly, because the question had no decimal point in it: 2e-3
+    // is a thousandth of two, and 1/500 says so without rounding.
+    expect(calculator.resultDisplay).toBe("1/500");
+  });
+
+  it("shows an exponent without spacing its sign like a subtraction", () => {
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendExponent();
+    calculator.chooseOperation("-");
+    calculator.appendNumber("3");
+    // "2e - 3" would be a different sum, and not one anybody typed.
+    expect(calculator.expressionDisplay).toContain("2e-3");
+  });
+
+  it("keeps a subtraction after Euler's constant as a subtraction", () => {
+    // "(e)-1" also has a minus directly after an "e". It is not an exponent,
+    // because the "e" there follows a bracket rather than a digit.
+    const calculator = new Calculator();
+    calculator.appendConstant("(e)");
+    calculator.chooseOperation("-");
+    calculator.appendNumber("1");
+    expect(calculator.expressionDisplay).toContain("(e) - 1");
+
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("1.71828182846");
+  });
+
+  it("keeps subtraction after an exponent as subtraction", () => {
+    const calculator = new Calculator();
+    for (const key of "2e5") calculator.insert(key);
+    calculator.chooseOperation("-");
+    calculator.appendNumber("1");
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("199,999");
+  });
+
+  it("undoes the whole exponent key with one delete", () => {
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendExponent();
+    calculator.delete();
+    expect(calculator.expression).toBe("2");
+  });
+});
+
+describe("entry shapes that must not go wrong", () => {
+  const mixed = (calculator: Calculator, whole: string, top: string, bottom: string) => {
+    calculator.appendMixedFraction();
+    for (const digit of whole) calculator.appendNumber(digit);
+    calculator.moveRight();
+    for (const digit of top) calculator.appendNumber(digit);
+    calculator.moveRight();
+    for (const digit of bottom) calculator.appendNumber(digit);
+  };
+
+  it("does not repeat an exponent's sign as a subtraction", () => {
+    // "2e-5" ends in "-5", which is not something to go on subtracting.
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendExponent();
+    calculator.chooseOperation("-");
+    calculator.appendNumber("5");
+    calculator.compute();
+    const once = calculator.resultDisplay;
+
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe(once);
+  });
+
+  it("still repeats a genuine subtraction after an exponent", () => {
+    const calculator = new Calculator();
+    for (const key of "2e5") calculator.insert(key);
+    calculator.chooseOperation("-");
+    calculator.appendNumber("1");
+    calculator.compute();
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("199,998");
+  });
+
+  it("forgets the mixed shape when the entry is cleared", () => {
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    calculator.clear();
+
+    calculator.appendNumber("7");
+    calculator.chooseOperation("÷");
+    calculator.appendNumber("3");
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("7/3");
+  });
+
+  it("takes only one exponent per number", () => {
+    // A second "e" is Euler's constant, so "1e1e3" is 81.5 and no error.
+    const calculator = new Calculator();
+    calculator.appendExponent();
+    calculator.appendExponent();
+    calculator.appendNumber("3");
+    expect(calculator.expression).toBe("1e3");
+  });
+
+  it("takes no decimal point inside an exponent", () => {
+    // "2e.5" reads as 2 x e x 0.5, which is a different sum and not an error.
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendExponent();
+    calculator.appendNumber(".");
+    calculator.appendNumber("5");
+    expect(calculator.expression).toBe("2e5");
+  });
+
+  it("still takes a decimal point in the number itself", () => {
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendNumber(".");
+    calculator.appendNumber("5");
+    calculator.appendExponent();
+    calculator.appendNumber("6");
+    expect(calculator.expression).toBe("2.5e6");
+  });
+
+  it("flips the exponent's sign with the sign key", () => {
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendExponent();
+    calculator.toggleSign();
+    expect(calculator.expression).toBe("2e-");
+
+    calculator.appendNumber("5");
+    calculator.compute();
+    expect(calculator.resultDisplay).toBe("1/50000");
+  });
+
+  it("takes the exponent's sign back off again", () => {
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendExponent();
+    calculator.toggleSign();
+    calculator.toggleSign();
+    expect(calculator.expression).toBe("2e");
+  });
+
+  it("negates the number once the exponent has digits in it", () => {
+    // By then it is a number like any other, and the sign key means what it
+    // always means. Negating a result of 1e-7 gives -1e-7, not 1e7.
+    const calculator = new Calculator();
+    calculator.appendNumber("2");
+    calculator.appendExponent();
+    calculator.appendNumber("5");
+    calculator.toggleSign();
+    expect(calculator.expression).toBe("-2e5");
+  });
+
+  it("still flips the sign of an ordinary number", () => {
+    const calculator = new Calculator();
+    calculator.appendNumber("5");
+    calculator.toggleSign();
+    expect(calculator.expression).toBe("-5");
+  });
+
+  it("takes a mixed number with no whole part", () => {
+    // Reachable by walking straight past the first place, or by deleting
+    // what was typed there. A leading "+" says nothing about the value.
+    const calculator = new Calculator();
+    mixed(calculator, "", "1", "2");
+    calculator.compute();
+    expect(calculator.error).toBeNull();
+    expect(calculator.resultDisplay).toBe("1/2");
+  });
+
+  it("deletes an untouched template as one thing", () => {
+    // Its own keypress moved the caret inside it, which is what makes DELETE
+    // character-wise -- and one bracket off "(+/)" leaves "+/)" behind.
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    calculator.delete();
+    expect(calculator.expression).toBe("");
+
+    calculator.appendFraction();
+    calculator.delete();
+    expect(calculator.expression).toBe("");
+  });
+
+  it("deletes character-wise once the template has been typed into", () => {
+    const calculator = new Calculator();
+    calculator.appendMixedFraction();
+    calculator.appendNumber("2");
+    calculator.delete();
+    expect(calculator.expression).toBe("(+/)");
+  });
+
+  it("records in the history what the display showed", () => {
+    const calculator = new Calculator();
+    mixed(calculator, "2", "1", "3");
+    calculator.compute();
+
+    expect(calculator.resultDisplay).toBe("2 1/3");
+    expect(calculator.history[0]?.result).toBe("2 1/3");
+    // The recall value is separate, and stays something the parser can read.
+    expect(calculator.history[0]?.recall).toBe("(7/3)");
+  });
+});

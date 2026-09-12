@@ -54,6 +54,26 @@ export function expectsOperand(text: string): boolean {
 }
 
 /**
+ * Whether the sign at `index` belongs to an exponent rather than the sum.
+ *
+ * The "-" in "2e-5" is part of one number. Spacing it like a subtraction
+ * turns a number on the display into "2e - 5", which is a different sum and
+ * not one anybody typed.
+ */
+function signsAnExponent(text: string, index: number): boolean {
+  const char = text[index];
+  if (char !== "-" && char !== "+") return false;
+
+  const marker = text[index - 1];
+  if (marker !== "e" && marker !== "E") return false;
+
+  // Only inside a number: the marker itself has to follow a digit, or "(e)-1"
+  // would have its minus swallowed.
+  const before = text[index - 2];
+  return before !== undefined && /[0-9.]/.test(before);
+}
+
+/**
  * Space out binary operators so "12+3*4" reads as "12 + 3 * 4", and report
  * where a cursor in the raw text lands in the spaced text. The caret has to be
  * placed in the formatted string, so the two have to be worked out together
@@ -74,7 +94,11 @@ export function formatExpressionWithCursor(
     if (index === expression.length) break;
 
     const operator = operatorAt(expression, index);
-    if (operator !== null && !expectsOperand(expression.slice(0, index))) {
+    if (
+      operator !== null &&
+      !expectsOperand(expression.slice(0, index)) &&
+      !signsAnExponent(expression, index)
+    ) {
       if (out !== "" && !out.endsWith(" ")) out += " ";
       out += `${operator} `;
       index += operator.length;
@@ -148,6 +172,9 @@ export function trailingOperation(expression: string): string | null {
     if (operator === null) continue;
     // Skip a sign rather than a genuine binary operator.
     if (expectsOperand(expression.slice(0, index))) continue;
+    // And skip an exponent's sign, which is part of a number: pressing "="
+    // twice after "2e-5" would otherwise go on subtracting five.
+    if (signsAnExponent(expression, index)) continue;
     return expression.slice(index);
   }
 

@@ -28,23 +28,6 @@ The largest job on this list, and the one that would change the most code.
 `formatExpressionWithCursor` maps a raw offset to a formatted offset today;
 that mapping would become a position in a tree.
 
-### Mixed numbers (`Un/d`)
-
-`n/d` shipped in phase 3; the mixed-number key did not, though the plan named
-both. `2 1/3` as an entry, and answers shown as mixed numbers when they are
-improper.
-
-`ts/exact.ts` already holds values as `(num · √r · π^k)/den`, so the value side
-needs nothing — only entry, and a display rule for when to prefer `2 1/3` over
-`7/3`.
-
-### `EE` key — scientific notation entry
-
-There is no way to type `2.5ᴇ6` at the moment. The `e` key deliberately
-inserts `(e)` so that `2e5` cannot be read as `2 × e × 5`, which is right, but
-it leaves genuine scientific entry with nowhere to go. Needs a token of its own
-in `ts/expression.ts` rather than reusing `e`.
-
 ### Display modes: `FIX`, `SCI`, `ENG`
 
 A fixed number of decimal places, or forced scientific/engineering notation.
@@ -138,9 +121,9 @@ key; the angle-mode plumbing it would sit beside already exists.
 
 If the goal is the most noticeable improvement per unit of work:
 
-1. **Mixed numbers** and the **`EE` key** — both small, both fill visible holes.
-2. **More regression types** — moderate, and `ts/stats.ts` is shaped for it.
-3. **MathPrint** — large, and the one that changes how the calculator looks.
-4. Everything else, by appetite.
+1. **More regression types** — moderate, and `ts/stats.ts` is shaped for it.
+2. **MathPrint** — large, and the one that changes how the calculator looks.
+3. Everything else, by appetite.
 
-*`dy/dx` and `∫f(x)dx` were the first item here and are now done.*
+*Done since this was written: `dy/dx` and `∫f(x)dx`, mixed numbers, and the
+`EE` key.*

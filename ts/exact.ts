@@ -266,6 +266,31 @@ export function toExpression(value: ExactValue): string {
   return `(${sign}${top}/${bottom.includes("*") ? `(${bottom})` : bottom})`;
 }
 
+/**
+ * A plain improper fraction written as a whole number and a part: 7/3 as
+ * "2 1/3", the way the reference hardware shows it.
+ *
+ * Null for anything that is not one -- a surd, a multiple of pi, a proper
+ * fraction, or a whole number. "2 1/3" is only clearer than "7/3" when there
+ * is a whole number in there to pull out.
+ *
+ * The space is safe here because this is a result, not an expression: the
+ * parseable form is written separately, and "2 1/3" as input would read as a
+ * product.
+ */
+export function toMixedDisplay(value: ExactValue): string | null {
+  if (value.radicand !== 1n || value.piPower !== 0) return null;
+  if (value.den === 1n) return null;
+
+  const magnitude = absolute(value.num);
+  if (magnitude < value.den) return null;
+
+  const whole = magnitude / value.den;
+  const part = magnitude % value.den;
+  const sign = value.num < 0n ? "-" : "";
+  return `${sign}${whole} ${part}/${value.den}`;
+}
+
 /** How the value should read on screen: "√2/2", "2π/3", "1/2", "-3". */
 export function toDisplay(value: ExactValue): string {
   if (isZero(value)) return "0";

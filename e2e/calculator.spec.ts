@@ -611,6 +611,30 @@ test.describe("graph", () => {
     await expect(page.locator("[data-graph-area]").first()).toBeVisible();
   });
 
+  test("enters a mixed number and gets one back", async ({ page }) => {
+    // 2nd then 1/x reaches U n/d, which lays out a whole part and a fraction.
+    await press(page, "2nd");
+    await page.locator('[data-action-alt="mixed-fraction"]').click();
+    await press(page, "2");
+    await page.locator('[data-action="cursor-right"]').click();
+    await press(page, "1");
+    await page.locator('[data-action="cursor-right"]').click();
+    await press(page, "3", "=");
+
+    await expect(result(page)).toHaveText("2 1/3");
+  });
+
+  test("enters a number in scientific notation", async ({ page }) => {
+    await press(page, "2", "2nd");
+    await page.locator('[data-action-alt="exponent"]').click();
+    await press(page, "5");
+
+    // The exponent is part of the number, not a sum beside it.
+    await expect(expression(page)).toContainText("2e5");
+    await press(page, "=");
+    await expect(result(page)).toHaveText("200,000");
+  });
+
   test("keeps every tab inside the panel", async ({ page }) => {
     // Each new tab has squeezed this row, and the last one was cut off the
     // edge when the sixth arrived. Neither the unit suite nor the typechecker

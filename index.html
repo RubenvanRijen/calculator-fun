@@ -42,7 +42,7 @@
             <button data-action="angle-mode" class="key-small"><span class="legend">mode</span></button>
             <button data-action="function" data-arg="sqrt" data-action-alt="function" data-arg-alt="abs" class="key-small"><span class="legend">√</span><span class="legend-alt">abs</span></button>
             <button data-action="square" data-action-alt="operation" data-arg-alt="^" class="key-small"><span class="legend">x²</span><span class="legend-alt">xⁿ</span></button>
-            <button data-action="reciprocal" class="key-small"><span class="legend">1/x</span></button>
+            <button data-action="reciprocal" data-action-alt="mixed-fraction" class="key-small"><span class="legend">1/x</span><span class="legend-alt">U n/d</span></button>
             <button data-action="function" data-arg="sin" data-action-alt="function" data-arg-alt="asin" class="key-small"><span class="legend">sin</span><span class="legend-alt">sin⁻¹</span></button>
             <button data-action="function" data-arg="cos" data-action-alt="function" data-arg-alt="acos" class="key-small"><span class="legend">cos</span><span class="legend-alt">cos⁻¹</span></button>
             <button data-action="function" data-arg="tan" data-action-alt="function" data-arg-alt="atan" class="key-small"><span class="legend">tan</span><span class="legend-alt">tan⁻¹</span></button>
@@ -74,7 +74,7 @@
             <button data-action="sign"><span class="legend">±</span></button>
             <button data-action="operation" data-arg="+" class="key-operator"><span class="legend">+</span></button>
             <button data-action="number" data-arg="0" class="span-two"><span class="legend">0</span></button>
-            <button data-action="number" data-arg="."><span class="legend">.</span></button>
+            <button data-action="number" data-arg="." data-action-alt="exponent" class="key-small"><span class="legend">.</span><span class="legend-alt">EE</span></button>
             <button data-action="equals" class="key-equals span-two"><span class="legend">=</span></button>
         </div>
 
@@ -320,7 +320,8 @@
         <kbd>2nd</kbd> reaches the alternate on keys that show one:
         sin/cos/tan&nbsp;&rarr;&nbsp;their inverses, log&nbsp;&rarr;&nbsp;10&#x02E3;,
         ln&nbsp;&rarr;&nbsp;e&#x02E3;, &radic;&nbsp;&rarr;&nbsp;abs,
-        &pi;&nbsp;&rarr;&nbsp;e, MC&nbsp;&rarr;&nbsp;clear history,
+        &pi;&nbsp;&rarr;&nbsp;e, 1/x&nbsp;&rarr;&nbsp;U&nbsp;n/d (mixed number),
+        .&nbsp;&rarr;&nbsp;EE (scientific notation), MC&nbsp;&rarr;&nbsp;clear history,
         &divide;&nbsp;&rarr;&nbsp;nCr, *&nbsp;&rarr;&nbsp;nPr, %&nbsp;&rarr;&nbsp;n!,
         Ans&nbsp;&rarr;&nbsp;rand, n/d&nbsp;&rarr;&nbsp;F&hArr;D.
         <kbd>mode</kbd> cycles RAD &rarr; GRAD &rarr; DEG.

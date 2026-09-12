@@ -4,6 +4,7 @@ import {
   isInteger as isExactInteger,
   toDisplay as toExactDisplay,
   toExpression as toExactExpression,
+  toMixedDisplay,
 } from "@/exact.ts";
 import type { ExactValue } from "@/interfaces/exact-value.ts";
 import { ExpressionBuffer } from "@/expression-buffer.ts";
@@ -36,6 +37,9 @@ const MAX_ENTRIES = 50;
  * The expression is kept as text and handed to the parser, which is what lets
  * precedence and parentheses work: 2 + 3 * 4 is 14, not 20.
  */
+/** Entry templates, which delete as one thing until they are typed into. */
+const TEMPLATES: readonly string[] = ["(/)", "(+/)"];
+
 export class Calculator {
   readonly #buffer = new ExpressionBuffer();
   readonly #history = new HistoryLog();
@@ -63,6 +67,10 @@ export class Calculator {
   #registers: Partial<Record<RegisterName, number>> = {};
   /** Whether the display is showing the exact form rather than the decimal. */
   #showingExact = true;
+  /** Whether the entry being typed used the mixed-number key. */
+  #usedMixed = false;
+  /** Whether the answer on screen should be written as a mixed number. */
+  #showingMixed = false;
   /** Expressions that were computed, oldest first, for up/down recall. */
   #entries: string[] = [];
   /** Where in #entries the user is; equal to its length when not browsing. */
@@ -203,6 +211,44 @@ export class Calculator {
     this.#refreshPreview();
   }
 
+  /**
+   * Start the exponent of a number written in scientific notation.
+   *
+   * With a number to attach to, "e" is the exponent marker the parser already
+   * reads. With nothing to attach to it would be Euler's constant instead --
+   * so the key would quietly become a second pi/e key -- and "1e" is what was
+   * meant: ten to the power of whatever comes next.
+   */
+  appendExponent(): void {
+    this.#beginFreshEntry();
+    const before = this.#buffer.textBeforeCursor;
+    // One exponent per number. A second would read as Euler's constant --
+    // "1e1e3" is 81.5, not an error -- so there is nothing to warn about
+    // afterwards and the key simply does not take.
+    if (/[0-9.]e[+-]?[0-9]*$/i.test(before)) return;
+
+    this.#buffer.push(/[0-9.]$/.test(before) ? "e" : "1e");
+    this.#refreshPreview();
+  }
+
+  /**
+   * Start a mixed number: a whole part, then a fraction.
+   *
+   * Written out as the sum it is -- "(2+1/3)" -- because the expression line
+   * is plain text and this calculator multiplies by juxtaposition, so a
+   * space-separated "2 1/3" would read as 2 x 1/3. The arrows walk between the
+   * three places to type, and the answer comes back as a mixed number.
+   */
+  appendMixedFraction(): void {
+    this.#beginFreshEntry();
+    this.#buffer.push("(+/)");
+    this.#buffer.moveLeft();
+    this.#buffer.moveLeft();
+    this.#buffer.moveLeft();
+    this.#usedMixed = true;
+    this.#refreshPreview();
+  }
+
   /** Append a factorial, which applies to the value already there. */
   appendFactorial(): void {
     this.error = null;
@@ -259,6 +305,8 @@ export class Calculator {
     this.#exact = null;
     this.#exactValue = null;
     this.#showingExact = true;
+    this.#usedMixed = false;
+    this.#showingMixed = false;
     this.#justComputed = false;
     this.#repeatTail = null;
   }
@@ -270,6 +318,17 @@ export class Calculator {
       this.clear();
       return;
     }
+
+    // A template nobody has typed into yet goes as a whole. Its own keypress
+    // put the caret inside it, which is what makes DELETE character-wise from
+    // then on -- and taking one bracket off "(+/)" leaves "+/)" behind to
+    // wreck whatever is typed next.
+    if (TEMPLATES.includes(this.#buffer.text)) {
+      this.#buffer.clear();
+      this.#refreshPreview();
+      return;
+    }
+
     this.#buffer.pop();
     this.#refreshPreview();
   }
@@ -282,7 +341,12 @@ export class Calculator {
     // sides of the caret: with "1|.5" there is already a point in this number.
     // The raw run, because "5." is exactly the case this has to catch and it
     // is not yet a number.
-    if (digit === "." && (this.#buffer.numberRunAtCursor?.literal ?? "").includes(".")) {
+    const run = this.#buffer.numberRunAtCursor?.literal ?? "";
+    if (digit === "." && run.includes(".")) return;
+    // An exponent is a whole number of tens, so a point after one would make
+    // "2e.5" -- which the parser reads as 2 x e x 0.5, a different sum
+    // entirely, and reports no error about.
+    if (digit === "." && /e/i.test(this.#buffer.textBeforeCursor.slice(run.length ? -run.length : 0))) {
       return;
     }
     this.#buffer.push(digit);
@@ -395,6 +459,11 @@ export class Calculator {
   toggleSign(): void {
     this.error = null;
     this.#continueFromResult();
+
+    // An exponent with nothing in it yet is what the sign key is reaching
+    // for: the number run stops at the "e", so without this the key does
+    // nothing at all at "2e", which is exactly where it is wanted.
+    if (this.#toggleExponentSign()) return;
 
     const number = this.#buffer.numberAtCursor ?? this.#buffer.wholeGroup;
     if (number === null) return;
@@ -521,12 +590,19 @@ export class Calculator {
     // ask in fractions and get a fraction, ask in decimals and get a decimal.
     // F<->D swaps either way.
     this.#showingExact = !expression.includes(".");
+    // Same rule for the shape of the fraction: ask with a mixed number and
+    // the answer comes back as one.
+    this.#showingMixed = this.#usedMixed;
     this.#repeatTail = trailingOperation(expression);
     // The history shows what the display showed, and recalls a form the
     // parser can read back.
     this.#history.add(
       formatExpression(expression),
-      this.#showingExact && this.#exact !== null ? this.#exact : result,
+      // What the display showed, mixed number and all. The recall value is
+      // separate and stays something the parser can read back.
+      this.#showingExact && this.#exact !== null
+        ? this.#mixedResult() ?? this.#exact
+        : result,
       this.#exactValue !== null ? toExactExpression(this.#exactValue) : result
     );
 
@@ -565,9 +641,36 @@ export class Calculator {
   get resultDisplay(): string {
     if (this.#buffer.isEmpty && this.#result === null) return "";
     if (this.#justComputed && this.#showingExact && this.#exact !== null) {
-      return this.#exact;
+      return this.#mixedResult() ?? this.#exact;
     }
     return formatOperand(this.#preview);
+  }
+
+  /**
+   * Set the sign of an exponent that has not been typed yet.
+   *
+   * Only while it is still empty. Once there are digits in it the number is a
+   * number again, and the sign key means what it always means: negating
+   * "1e-7" gives "-1e-7", not "1e7".
+   *
+   * Returns whether it did anything, so the caller can fall through.
+   */
+  #toggleExponentSign(): boolean {
+    const before = this.#buffer.textBeforeCursor;
+    const match = /[0-9.]e([+-]?)$/i.exec(before);
+    if (match === null) return false;
+
+    const sign = match[1] ?? "";
+    const from = before.length - sign.length;
+    this.#buffer.replaceRange(from, from + sign.length, sign === "-" ? "" : "-");
+    this.#refreshPreview();
+    return true;
+  }
+
+  /** The answer as a mixed number, when one was asked for and one exists. */
+  #mixedResult(): string | null {
+    if (!this.#showingMixed || this.#exactValue === null) return null;
+    return toMixedDisplay(this.#exactValue);
   }
 
   /** Whether there is an exact form to toggle to, for the F<->D key. */
@@ -633,6 +736,8 @@ export class Calculator {
     if (this.#justComputed) {
       this.#buffer.clear();
       this.#justComputed = false;
+      // The shape of the last question says nothing about the next one.
+      this.#usedMixed = false;
     }
   }
 

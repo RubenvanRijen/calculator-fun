@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ONE,
+  toMixedDisplay,
   PI,
   ZERO,
   add,
@@ -325,5 +326,37 @@ describe("predicates", () => {
   it("negates", () => {
     expect(negate(make(1n, 2n))).toEqual(make(-1n, 2n));
     expect(negate(ZERO)).toEqual(ZERO);
+  });
+});
+
+describe("toMixedDisplay", () => {
+  const of = (num: bigint, den: bigint) => make(num, den);
+
+  it("pulls the whole number out of an improper fraction", () => {
+    expect(toMixedDisplay(of(7n, 3n))).toBe("2 1/3");
+    expect(toMixedDisplay(of(22n, 7n))).toBe("3 1/7");
+  });
+
+  it("keeps the sign on the whole number", () => {
+    expect(toMixedDisplay(of(-7n, 3n))).toBe("-2 1/3");
+  });
+
+  it("has nothing to pull out of a proper fraction", () => {
+    // "0 2/3" is not clearer than "2/3".
+    expect(toMixedDisplay(of(2n, 3n))).toBeNull();
+  });
+
+  it("has nothing to pull out of a whole number", () => {
+    expect(toMixedDisplay(of(6n, 3n))).toBeNull();
+    expect(toMixedDisplay(of(5n, 1n))).toBeNull();
+  });
+
+  it("refuses a surd or a multiple of pi", () => {
+    expect(toMixedDisplay({ num: 3n, den: 2n, radicand: 2n, piPower: 0 })).toBeNull();
+    expect(toMixedDisplay({ num: 3n, den: 2n, radicand: 1n, piPower: 1 })).toBeNull();
+  });
+
+  it("handles a fraction just past one", () => {
+    expect(toMixedDisplay(of(4n, 3n))).toBe("1 1/3");
   });
 });

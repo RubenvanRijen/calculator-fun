@@ -82,6 +82,8 @@ export class Keypad {
       random: () => calculator.appendRandom(),
       factorial: () => calculator.appendFactorial(),
       fraction: () => calculator.appendFraction(),
+      "mixed-fraction": () => calculator.appendMixedFraction(),
+      exponent: () => calculator.appendExponent(),
       "cursor-left": () => calculator.moveLeft(),
       "cursor-right": () => calculator.moveRight(),
       "recall-previous": () => calculator.recallPrevious(),

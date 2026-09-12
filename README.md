@@ -324,6 +324,35 @@ multiplying by 3 gives exactly `1` rather than `0.999999999999`.
 
 `n/d` starts a fraction, and the history shows whichever form was on screen.
 
+**Mixed numbers.** `2nd` + `1/x` is `U n/d`, which lays out a whole part and a
+fraction: type the whole number, `▶`, the numerator, `▶`, the denominator. The
+answer comes back the way the question was asked, so `2 1/3 + 1` is `3 1/3`
+while `7/3` on its own stays `7/3`.
+
+The template is written out as the sum it is — `(2 + 1/3)` — because the
+expression line is plain text and this calculator multiplies by juxtaposition,
+so a space-separated `2 1/3` would read as 2 × 1/3. The answer has no such
+problem: `2 1/3` is a result, not something to be parsed back.
+
+The whole part may be left out, since a leading `+` says nothing about a value.
+`DEL` on a template nobody has typed into yet takes the whole template, rather
+than one bracket off it.
+
+**Scientific notation.** `2nd` + `.` is `EE`, which starts the exponent of a
+number: `2` `EE` `5` is `2e5`, or 200,000. `±` right after `EE` makes the
+exponent negative, as does the `-` key.
+
+The sign belongs to the number, so `2e-3` stays one value: it is not spaced out
+into `2e - 3`, and pressing `=` twice does not go on subtracting three. Once
+the exponent has digits in it the number is a number again, and `±` means what
+it always means — negating `1e-7` gives `-1e-7`, not `1e7`.
+
+With nothing to attach to, `EE` gives `1e`: a bare `e` is Euler's constant, and
+the key would otherwise be a second way to type it rather than a power of ten.
+For the same reason a number takes only one exponent, and no decimal point
+inside one — `1e1e3` and `2e.5` are both things the parser reads happily as
+something else, and report no error about.
+
 **Stored values.** The Vars tab keeps four registers, `A` to `D`: store what
 is on the display, then use the letter in any expression, including in the
 ƒ(x) field. The letters are uppercase and are matched before function names,

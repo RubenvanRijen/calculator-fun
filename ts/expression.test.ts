@@ -527,3 +527,23 @@ describe("isOperation", () => {
     expect(isOperation(value)).toBe(false);
   });
 });
+
+describe("a leading plus", () => {
+  const value = (text: string) =>
+    evaluateString(text, { angleMode: "rad", x: undefined });
+
+  it("says nothing about the value", () => {
+    expect(value("+5")).toBe(5);
+    expect(value("(+1/2)")).toBe(0.5);
+  });
+
+  it("is allowed after an operator, as a sign is", () => {
+    expect(value("2++3")).toBe(5);
+    expect(value("2*+3")).toBe(6);
+  });
+
+  it("does not make an operator optional", () => {
+    // Dropping the sign must not turn "2 3" into anything.
+    expect(() => value("2 3")).toThrow();
+  });
+});
