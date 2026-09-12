@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { Calculator, formatExpression, formatOperand, trailingOperation } from "@/calculator.ts";
-import { significant } from "@/format.ts";
+import { Calculator } from "@/calculator.ts";
+import {
+  formatExpression,
+  formatOperand,
+  significant,
+  trailingOperation,
+} from "@/format.ts";
 import type { Operation } from "@/types/operation.ts";
 
 /** Drive the calculator one keypress at a time, as a user would. */

@@ -67,7 +67,7 @@ const FUNCTIONS: Record<FunctionName, (value: number, angleMode: AngleMode) => n
   exp: (value) => Math.exp(value),
 };
 
-export const FUNCTION_NAMES = Object.keys(FUNCTIONS) as FunctionName[];
+const FUNCTION_NAMES = Object.keys(FUNCTIONS) as FunctionName[];
 
 /** The spellings the tokenizer accepts, and which constant each names. */
 const CONSTANT_NAMES: Readonly<Record<string, ConstantName>> = {
@@ -77,7 +77,7 @@ const CONSTANT_NAMES: Readonly<Record<string, ConstantName>> = {
 };
 
 /** What each constant is worth in floating point. */
-export const CONSTANT_VALUES: Readonly<Record<ConstantName, number>> = {
+const CONSTANT_VALUES: Readonly<Record<ConstantName, number>> = {
   pi: Math.PI,
   e: Math.E,
 };

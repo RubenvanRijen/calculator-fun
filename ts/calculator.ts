@@ -738,11 +738,3 @@ export class Calculator {
     return isNaN(value) ? null : value;
   }
 }
-
-/** Re-exported so existing importers keep working. */
-export {
-  formatExpression,
-  formatExpressionWithCursor,
-  formatOperand,
-  trailingOperation,
-} from "@/format.ts";

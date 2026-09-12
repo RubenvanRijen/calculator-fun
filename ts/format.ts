@@ -43,7 +43,7 @@ export function trailingOperatorLength(text: string): number {
 }
 
 /** The operator starting at `index`, or null. */
-export function operatorAt(text: string, index: number): string | null {
+function operatorAt(text: string, index: number): string | null {
   const lower = text.toLowerCase();
   for (const spelling of OPERATOR_SPELLINGS) {
     if (lower.startsWith(spelling.toLowerCase(), index)) {

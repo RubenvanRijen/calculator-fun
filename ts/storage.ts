@@ -159,16 +159,6 @@ export function saveState(
   }
 }
 
-/** Forget everything saved. */
-export function clearState(storage: Storage | null = safeStorage()): void {
-  if (storage === null) return;
-  try {
-    storage.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing useful to do.
-  }
-}
-
 function isValidHistoryEntry(
   value: unknown
 ): value is { expression: string; result: string; recall?: unknown } {
