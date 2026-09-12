@@ -97,7 +97,17 @@ keeps handling its own `Enter`, so nothing fires twice.
 reads as "percent of the first operand", so `50 + 10 %` is `55`, not `50.1`.
 Inside `*` or `÷` there is no sensible base, so it is a plain division by 100.
 
-**Scientific keys**: `√`, `x²`, `1/x`, `xⁿ`, `π`, plus `±` to flip a sign.
+**Scientific keys**: `√`, `x²`, `1/x`, `xⁿ`, `π`, `sin`, `cos`, `tan`, `log`,
+`ln`, plus `±` to flip a sign.
+
+**Angle modes.** The `mode` key cycles RAD → GRAD → DEG, shown as a badge on the
+display and remembered across reloads. Trigonometry reads its argument in the
+active mode and the inverses report their result in it, so `cos(60)` is `0.5` in
+degrees and `-0.952…` in radians. Graphs are always drawn in radians, whatever
+the keypad is set to.
+
+The engine also understands `sinh`, `cosh`, `tanh` and `exp`, which have no key
+of their own but can be typed into the ƒ(x) field.
 
 **A `2nd` shift layer**, as on the reference hardware. Pressing `2nd` swaps the
 legends of the keys that carry an alternate, and the shift is spent by the very
@@ -105,6 +115,9 @@ next action -- a key, a keystroke, or a click anywhere else on the page:
 
 | Key | `2nd` gives |
 | --- | --- |
+| `sin` `cos` `tan` | `sin⁻¹` `cos⁻¹` `tan⁻¹` |
+| `log` | `10ˣ` |
+| `ln` | `eˣ` |
 | `√` | `abs(` |
 | `π` | `e` (Euler's constant, inserted as `(e)` so it cannot read as an exponent) |
 | `MC` | `CH`, clear history |

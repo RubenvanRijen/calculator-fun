@@ -1,6 +1,7 @@
-import { evaluateString, isOperation, FUNCTION_NAMES } from "./expression.js";
+import { evaluateString, isOperation } from "./expression.js";
 import type { Operation } from "./types/operation.js";
 import type { HistoryEntry } from "./interfaces/history-entry.js";
+import type { AngleMode } from "./types/angle-mode.js";
 
 /** How many past calculations to keep. Oldest are dropped beyond this. */
 const MAX_HISTORY = 50;
@@ -30,17 +31,6 @@ function expectsOperand(text: string): boolean {
  * rather than one character, so undoing the "(e)" or "sqrt(" key takes one
  * press rather than three or five. Longest first.
  */
-const KEYPRESS_ATOMS: readonly string[] = [
-  "(e)",
-  ...FUNCTION_NAMES.map((name) => `${name}(`),
-].sort((a, b) => b.length - a.length);
-
-/** How many characters the last keypress contributed. */
-function trailingAtomLength(expression: string): number {
-  const atom = KEYPRESS_ATOMS.find((candidate) => expression.endsWith(candidate));
-  return atom === undefined ? 1 : atom.length;
-}
-
 /** Close any parentheses the user left open, so "sqrt(9" still evaluates. */
 function balanceParentheses(expression: string): string {
   let depth = 0;
@@ -68,7 +58,30 @@ export class Calculator {
   /** The memory register, as used by the MC/MR/M+/M- keys. */
   memory = 0;
 
+  #angleMode: AngleMode = "rad";
+
+  /** How trigonometry reads its arguments. Survives AC, like memory. */
+  get angleMode(): AngleMode {
+    return this.#angleMode;
+  }
+
+  /**
+   * Setting it re-evaluates the preview: otherwise the display would keep
+   * showing a value worked out in the previous mode, and M+ would bank it.
+   */
+  set angleMode(mode: AngleMode) {
+    this.#angleMode = mode;
+    this.#refreshPreview();
+  }
+
   #history: HistoryEntry[] = [];
+  /**
+   * How many characters each keypress added, newest last, so DEL can undo one
+   * press. Derived from what was actually typed rather than from how the text
+   * looks: "10^(" reached by pressing 1, 0, x^n and ( is four presses, while
+   * the same four characters from the 10^ key are one.
+   */
+  #atoms: number[] = [];
   #result: string | null = null;
   #preview = "";
   #justComputed = false;
@@ -94,6 +107,7 @@ export class Calculator {
   /** Reset the current entry. Memory and history deliberately survive. */
   clear(): void {
     this.expression = "";
+    this.#atoms = [];
     this.error = null;
     this.#result = null;
     this.#preview = "";
@@ -108,10 +122,8 @@ export class Calculator {
       this.clear();
       return;
     }
-    this.expression = this.expression.slice(
-      0,
-      -trailingAtomLength(this.expression)
-    );
+    const atom = this.#atoms.pop() ?? 1;
+    this.expression = this.expression.slice(0, -atom);
     this.#refreshPreview();
   }
 
@@ -125,6 +137,7 @@ export class Calculator {
     // Only one decimal point per number.
     if (digit === "." && /[0-9.]*\.[0-9]*$/.test(this.expression)) return;
     this.expression += digit;
+    this.#atoms.push(digit.length);
     this.#refreshPreview();
   }
 
@@ -144,8 +157,10 @@ export class Calculator {
     // Replace a trailing operator rather than stacking two.
     if (this.#endsWithOperator()) {
       this.expression = this.expression.slice(0, -1);
+      this.#atoms.pop();
     }
     this.expression += operation;
+    this.#atoms.push(operation.length);
     this.#refreshPreview();
   }
 
@@ -157,6 +172,7 @@ export class Calculator {
       this.#justComputed = false;
     }
     this.expression += "(";
+    this.#atoms.push(1);
     this.#refreshPreview();
   }
 
@@ -166,6 +182,7 @@ export class Calculator {
     if (this.#openDepth() === 0) return;
     if (expectsOperand(this.expression)) return;
     this.expression += ")";
+    this.#atoms.push(1);
     this.#refreshPreview();
   }
 
@@ -177,18 +194,35 @@ export class Calculator {
       this.#justComputed = false;
     }
     this.expression += `${name}(`;
+    this.#atoms.push(name.length + 1);
     this.#refreshPreview();
   }
 
-  /** Append a constant such as π. */
-  appendConstant(symbol: string): void {
+  /** Append raw text that one keypress produced, e.g. "π" or "10^(". */
+  insert(text: string): void {
     this.error = null;
     if (this.#justComputed) {
       this.expression = "";
       this.#justComputed = false;
     }
-    this.expression += symbol;
+
+    // Text that starts with a digit would otherwise glue onto the number
+    // already being typed: 2 then the 10^ key must mean 2 x 10^n, not 210^n.
+    // Symbols such as "π" and "(e)" need no help -- the tokenizer implies the
+    // multiplication for those itself.
+    let inserted = text;
+    if (/^[0-9]/.test(text) && /[0-9.)π]$/.test(this.expression)) {
+      inserted = `*${text}`;
+    }
+
+    this.expression += inserted;
+    this.#atoms.push(inserted.length);
     this.#refreshPreview();
+  }
+
+  /** Append a constant such as π. */
+  appendConstant(symbol: string): void {
+    this.insert(symbol);
   }
 
   /** Square the expression so far: appends "^2". */
@@ -201,10 +235,16 @@ export class Calculator {
     this.#appendPower("-1");
   }
 
+  /** Every character becomes its own atom, the safe default after a rewrite. */
+  #resetAtoms(): void {
+    this.#atoms = Array.from({ length: this.expression.length }, () => 1);
+  }
+
   /** Load a value straight into the display, as MR and history clicks do. */
   recall(value: string): void {
     this.error = null;
     this.expression = value;
+    this.#resetAtoms();
     this.#justComputed = false;
     this.#refreshPreview();
   }
@@ -225,8 +265,10 @@ export class Calculator {
 
     if (before.endsWith("-") && expectsOperand(before.slice(0, -1))) {
       this.expression = before.slice(0, -1) + literal;
+    this.#resetAtoms();
     } else {
       this.expression = `${before}-${literal}`;
+    this.#resetAtoms();
     }
     this.#refreshPreview();
   }
@@ -255,12 +297,14 @@ export class Calculator {
       const base = this.#tryEvaluate(before.slice(0, -1));
       if (base !== null) {
         this.expression = `${before}(${base}*${literal}/100)`;
+    this.#resetAtoms();
         this.#refreshPreview();
         return;
       }
     }
 
     this.expression = `${before}(${literal}/100)`;
+    this.#resetAtoms();
     this.#refreshPreview();
   }
 
@@ -312,7 +356,7 @@ export class Calculator {
 
     let value: number;
     try {
-      value = evaluateString(expression);
+      value = evaluateString(expression, { angleMode: this.#angleMode });
     } catch (cause) {
       this.error = cause instanceof Error ? cause.message : "Invalid expression";
       return;
@@ -329,6 +373,7 @@ export class Calculator {
     if (this.#history.length > MAX_HISTORY) this.#history.length = MAX_HISTORY;
 
     this.expression = expression;
+    this.#resetAtoms();
     this.#result = result;
     this.#preview = result;
     this.#justComputed = true;
@@ -359,6 +404,7 @@ export class Calculator {
     }
     if (this.expression === "" || this.#endsWithOperator()) return;
     this.expression += `^${exponent}`;
+    this.#atoms.push(exponent.length + 1);
     this.#refreshPreview();
   }
 
@@ -402,7 +448,7 @@ export class Calculator {
   #tryEvaluate(expression: string): string | null {
     if (expression === "") return null;
     try {
-      const value = evaluateString(expression);
+      const value = evaluateString(expression, { angleMode: this.#angleMode });
       return Number.isFinite(value) ? roundResult(value).toString() : null;
     } catch {
       return null;

@@ -7,6 +7,7 @@ import type { CalculatorHandle } from "./interfaces/calculator-handle.js";
 import type { HistoryEntry } from "./interfaces/history-entry.js";
 import type { PlotResult } from "./interfaces/plot-result.js";
 import type { Theme } from "./types/theme.js";
+import type { AngleMode } from "./types/angle-mode.js";
 
 /** How long a key flashes when driven from the keyboard. */
 const FLASH_MS = 120;
@@ -29,6 +30,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   const errorElement = query("[data-error]");
   const memoryIndicator = query("[data-memory-indicator]");
   const parenIndicator = query("[data-paren-indicator]");
+  const angleIndicator = query("[data-angle-indicator]");
   const historyList = query("[data-history-list]");
   const historyEmpty = query("[data-history-empty]");
 
@@ -49,9 +51,16 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
 
   const calculator = new Calculator();
 
+  // Every listener below is registered against this signal, so destroy() is a
+  // single abort rather than a list that drifts out of date. It also covers
+  // the per-entry history buttons, which are created and discarded constantly.
+  const listeners = new AbortController();
+  const signal = listeners.signal;
+
   // --- persistence & theme ------------------------------------------------
   const saved = loadState();
   calculator.restore(saved.history ?? [], saved.memory ?? 0);
+  calculator.angleMode = saved.angleMode ?? "rad";
 
   let theme: Theme = saved.theme ?? preferredTheme();
   const themeIcon = query("[data-theme-icon]");
@@ -62,7 +71,12 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   applyCurrentTheme();
 
   const persist = (): void => {
-    saveState({ history: calculator.history, memory: calculator.memory, theme });
+    saveState({
+      history: calculator.history,
+      memory: calculator.memory,
+      theme,
+      angleMode: calculator.angleMode,
+    });
   };
 
   // --- display ------------------------------------------------------------
@@ -83,6 +97,9 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
       errorElement.hidden = calculator.error === null;
     }
     if (memoryIndicator) memoryIndicator.hidden = !calculator.hasMemory;
+    if (angleIndicator) {
+      angleIndicator.textContent = calculator.angleMode.toUpperCase();
+    }
     if (parenIndicator) {
       const open = calculator.openParenCount;
       parenIndicator.hidden = open === 0;
@@ -116,10 +133,14 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     result.textContent = entry.result;
 
     button.append(expression, result);
-    button.addEventListener("click", () => {
-      calculator.recall(entry.result);
-      updateDisplay();
-    });
+    button.addEventListener(
+      "click",
+      () => {
+        calculator.recall(entry.result);
+        updateDisplay();
+      },
+      { signal }
+    );
 
     item.append(button);
     return item;
@@ -163,6 +184,8 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     "open-paren": () => calculator.openParen(),
     "close-paren": () => calculator.closeParen(),
     "clear-history": () => calculator.clearHistory(),
+    insert: (arg) => { if (arg) calculator.insert(arg); },
+    "angle-mode": () => { calculator.angleMode = nextAngleMode(calculator.angleMode); },
     second: () => setShift(!shifted),
   };
 
@@ -173,10 +196,18 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
 
   // An arrow const rather than a function declaration: that is what keeps the
   // non-null narrowing of `keypad` from the guard above alive in here.
+  const secondKey = keypad.querySelector<HTMLElement>('[data-action="second"]');
+
   const setShift = (value: boolean): void => {
     shifted = value;
     keypad.dataset["shift"] = value ? "on" : "off";
+    // The legend swap is purely visual, so the state has to be announced too.
+    secondKey?.setAttribute("aria-pressed", String(value));
   };
+
+  // Establish the resting state up front, so data-shift and aria-pressed are
+  // both meaningful before the key is ever touched.
+  setShift(false);
 
   /** Which action a key runs right now, given the shift state. */
   function resolveAction(button: HTMLElement): { name: string; arg: string | undefined } {
@@ -187,15 +218,30 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     return { name: button.dataset["action"] ?? "", arg: button.dataset["arg"] };
   }
 
-  // One delegated listener rather than one per key.
-  keypad.addEventListener("click", (event) => {
+  // One delegated listener rather than one per key. An arrow const, so the
+  // non-null narrowing of `keypad` from the guard above survives into it.
+  const handleKeypadClick = (event: Event): void => {
     const target = event.target instanceof Element
       ? event.target.closest<HTMLElement>("button[data-action]")
       : null;
-    if (!target || !keypad.contains(target)) return;
+    if (!target || !keypad.contains(target)) {
+      // A click inside the keypad that missed a key -- the display, a gutter --
+      // still spends a pending shift. The root listener cannot see these,
+      // because it ignores everything inside the keypad.
+      if (shifted) {
+        setShift(false);
+        updateDisplay();
+      }
+      return;
+    }
 
     const { name, arg } = resolveAction(target);
     const handler = ACTIONS[name];
+
+    // A real mouse click leaves focus on the key, so a following Enter would
+    // re-activate that key instead of computing. Keyboard activation reports
+    // detail 0 and must keep focus where it is, for tab order's sake.
+    if (event instanceof MouseEvent && event.detail > 0) target.blur();
 
     handler?.(arg);
     // The shift lasts for exactly one key, as it does on the hardware. This
@@ -203,7 +249,9 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     // leave the keypad latched in its alternate layer.
     if (name !== "second") setShift(false);
     updateDisplay();
-  });
+  };
+
+  keypad.addEventListener("click", handleKeypadClick, { signal });
 
   // Anything clicked outside the keypad -- a tab, a history entry, the theme
   // toggle, a graph chip -- also spends a pending 2nd. Otherwise the shift
@@ -218,26 +266,34 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     updateDisplay();
   }
 
-  root.addEventListener("click", handleRootClick);
+  root.addEventListener("click", handleRootClick, { signal });
 
   // Panel controls sit outside the keypad and keep their own wiring.
   const on = (selector: string, handler: (element: HTMLElement) => void): void => {
     for (const element of root.querySelectorAll<HTMLElement>(selector)) {
-      element.addEventListener("click", () => {
-        handler(element);
-        updateDisplay();
-      });
+      element.addEventListener(
+        "click",
+        () => {
+          handler(element);
+          updateDisplay();
+        },
+        { signal }
+      );
     }
   };
 
   on("[data-history-clear]", () => calculator.clearHistory());
 
   // --- theme toggle -------------------------------------------------------
-  query("[data-theme-toggle]")?.addEventListener("click", () => {
-    theme = otherTheme(theme);
-    applyCurrentTheme();
-    persist();
-  });
+  query("[data-theme-toggle]")?.addEventListener(
+    "click",
+    () => {
+      theme = otherTheme(theme);
+      applyCurrentTheme();
+      persist();
+    },
+    { signal }
+  );
 
   // --- keyboard -----------------------------------------------------------
   function applyKey(key: string): string | null {
@@ -303,13 +359,15 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     updateDisplay();
   }
 
-  doc.addEventListener("keydown", handleKeydown);
+  doc.addEventListener("keydown", handleKeydown, { signal });
 
   // --- tabs ---------------------------------------------------------------
   const tabs = [...root.querySelectorAll<HTMLElement>("[data-tab]")];
   const panels = [...root.querySelectorAll<HTMLElement>("[data-panel]")];
   for (const tab of tabs) {
-    tab.addEventListener("click", () => {
+    tab.addEventListener(
+      "click",
+      () => {
       const name = tab.dataset["tab"];
       for (const other of tabs) {
         const active = other === tab;
@@ -319,8 +377,10 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
       for (const panel of panels) {
         panel.hidden = panel.dataset["panel"] !== name;
       }
-      if (name === "graph") renderGraph();
-    });
+        if (name === "graph") renderGraph();
+      },
+      { signal }
+    );
   }
 
   // --- graph --------------------------------------------------------------
@@ -439,15 +499,15 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     const bounds = graphSvg.getBoundingClientRect();
     if (bounds.width === 0) return;
     traceAt((event.clientX - bounds.left) / bounds.width);
-  });
+  }, { signal });
   graphSvg?.addEventListener("pointerleave", () => {
     graphSvg.querySelector("[data-graph-marker]")?.setAttribute("visibility", "hidden");
     if (graphReadout) graphReadout.textContent = "";
-  });
+  }, { signal });
 
-  graphInput?.addEventListener("input", renderGraph);
-  graphMin?.addEventListener("input", renderGraph);
-  graphMax?.addEventListener("input", renderGraph);
+  graphInput?.addEventListener("input", renderGraph, { signal });
+  graphMin?.addEventListener("input", renderGraph, { signal });
+  graphMax?.addEventListener("input", renderGraph, { signal });
   on("[data-graph-example]", (button) => {
     if (graphInput) graphInput.value = button.dataset["graphExample"] ?? "";
     renderGraph();
@@ -458,12 +518,9 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   return {
     calculator,
     actionNames: ACTION_NAMES,
-    destroy: () => {
-      doc.removeEventListener("keydown", handleKeydown);
-      // `root` outlives the markup (it is the document or its body), so a
-      // stale handler would keep writing this instance's state to storage.
-      root.removeEventListener("click", handleRootClick);
-    },
+    // `root` and `doc` outlive the markup, so a stale handler would keep
+    // writing this instance's state to storage. One abort retires them all.
+    destroy: () => listeners.abort(),
   };
 }
 
@@ -476,6 +533,13 @@ function readNumber(input: HTMLInputElement | null, fallback: number): number {
   if (raw === undefined || raw === "") return fallback;
   const value = Number(raw);
   return Number.isFinite(value) ? value : fallback;
+}
+
+/** deg -> rad -> grad -> deg, the order the mode key cycles through. */
+function nextAngleMode(mode: AngleMode): AngleMode {
+  if (mode === "deg") return "rad";
+  if (mode === "rad") return "grad";
+  return "deg";
 }
 
 /** Short, readable numbers for the trace readout. */

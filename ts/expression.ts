@@ -2,6 +2,8 @@ import { TokenKind } from "./enums/token-kind.js";
 import type { Token } from "./types/token.js";
 import type { Operation } from "./types/operation.js";
 import type { FunctionName } from "./types/function-name.js";
+import type { AngleMode } from "./types/angle-mode.js";
+import type { EvalContext } from "./interfaces/eval-context.js";
 
 /**
  * Binding strength. Higher binds tighter, so 2 + 3 * 4 is 14 rather than 20.
@@ -20,14 +22,41 @@ const UNARY_MINUS_PRECEDENCE = 3;
 /** "^" is the only right-associative operator: 2^3^2 is 2^9, not 8^2. */
 const RIGHT_ASSOCIATIVE: ReadonlySet<Operation> = new Set<Operation>(["^"]);
 
-const FUNCTIONS: Record<FunctionName, (value: number) => number> = {
-  sin: Math.sin,
-  cos: Math.cos,
-  tan: Math.tan,
-  sqrt: Math.sqrt,
-  abs: Math.abs,
-  ln: Math.log,
-  log: Math.log10,
+/** Radians per unit of each angle mode. */
+const RADIANS_PER_UNIT: Record<AngleMode, number> = {
+  rad: 1,
+  deg: Math.PI / 180,
+  grad: Math.PI / 200,
+};
+
+function toRadians(value: number, mode: AngleMode): number {
+  return value * RADIANS_PER_UNIT[mode];
+}
+
+function fromRadians(value: number, mode: AngleMode): number {
+  return value / RADIANS_PER_UNIT[mode];
+}
+
+/**
+ * Each function receives the resolved context, so the three circular functions
+ * can read their argument in the active angle mode and their three inverses can
+ * report a result in it. Everything else ignores it.
+ */
+const FUNCTIONS: Record<FunctionName, (value: number, angleMode: AngleMode) => number> = {
+  sin: (value, mode) => Math.sin(toRadians(value, mode)),
+  cos: (value, mode) => Math.cos(toRadians(value, mode)),
+  tan: (value, mode) => Math.tan(toRadians(value, mode)),
+  asin: (value, mode) => fromRadians(Math.asin(value), mode),
+  acos: (value, mode) => fromRadians(Math.acos(value), mode),
+  atan: (value, mode) => fromRadians(Math.atan(value), mode),
+  sinh: (value) => Math.sinh(value),
+  cosh: (value) => Math.cosh(value),
+  tanh: (value) => Math.tanh(value),
+  sqrt: (value) => Math.sqrt(value),
+  abs: (value) => Math.abs(value),
+  ln: (value) => Math.log(value),
+  log: (value) => Math.log10(value),
+  exp: (value) => Math.exp(value),
 };
 
 export const FUNCTION_NAMES = Object.keys(FUNCTIONS) as FunctionName[];
@@ -61,17 +90,23 @@ export function isOperation(value: string): value is Operation {
  * word instead of a fragment of it.
  */
 function splitIntoNames(run: string): string[] | null {
-  const names: string[] = [];
-  let rest = run.toLowerCase();
+  const lower = run.toLowerCase();
 
-  while (rest.length > 0) {
-    const match = KNOWN_NAMES.find((candidate) => rest.startsWith(candidate));
-    if (match === undefined) return null;
-    names.push(match);
-    rest = rest.slice(match.length);
-  }
+  // Backtracking, because committing to the longest prefix can dead-end on a
+  // run that does decompose: "expi" is e, x, pi, but a greedy pass takes
+  // "exp"... and then gives up on "i". Runs are a handful of characters, so
+  // the search space is trivial.
+  const from = (start: number): string[] | null => {
+    if (start === lower.length) return [];
+    for (const candidate of KNOWN_NAMES) {
+      if (!lower.startsWith(candidate, start)) continue;
+      const rest = from(start + candidate.length);
+      if (rest !== null) return [candidate, ...rest];
+    }
+    return null;
+  };
 
-  return names;
+  return from(0);
 }
 
 /**
@@ -84,6 +119,8 @@ function splitIntoNames(run: string): string[] | null {
 export function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
   let index = 0;
+  /** Whether the token just pushed came from digits rather than a name. */
+  let lastWasLiteral = false;
 
   /** True when the next "-" would be unary, i.e. nothing to subtract from. */
   const expectsOperand = (): boolean => {
@@ -127,15 +164,17 @@ export function tokenize(input: string): Token[] {
       const value = parseFloat(literal);
       if (isNaN(value)) throw new Error(`Cannot read "${literal}"`);
 
-      // Two numbers in a row is never an implied multiplication -- it means
-      // something like "1.2.3", which should be rejected rather than guessed at.
-      const previous = tokens[tokens.length - 1];
-      if (previous?.kind === TokenKind.Number) {
+      // Two *literals* in a row is never an implied multiplication -- it
+      // means something like "1.2.3", which should be rejected rather than
+      // guessed at. A constant beside a literal is fine: "π5" is a product,
+      // exactly as "2π" and "2x" are.
+      if (lastWasLiteral) {
         throw new Error("Unexpected number");
       }
 
       implyMultiplication();
       tokens.push({ kind: TokenKind.Number, value });
+      lastWasLiteral = true;
       index += literal.length;
       continue;
     }
@@ -143,18 +182,21 @@ export function tokenize(input: string): Token[] {
     if (char === "(") {
       implyMultiplication();
       tokens.push({ kind: TokenKind.LeftParen });
+      lastWasLiteral = false;
       index += 1;
       continue;
     }
 
     if (char === ")") {
       tokens.push({ kind: TokenKind.RightParen });
+      lastWasLiteral = false;
       index += 1;
       continue;
     }
 
     if (char === "-" && expectsOperand()) {
       tokens.push({ kind: TokenKind.UnaryMinus });
+      lastWasLiteral = false;
       index += 1;
       continue;
     }
@@ -163,6 +205,7 @@ export function tokenize(input: string): Token[] {
     const operator = char === "/" ? "÷" : char;
     if (isOperation(operator)) {
       tokens.push({ kind: TokenKind.Operator, operator });
+      lastWasLiteral = false;
       index += 1;
       continue;
     }
@@ -213,6 +256,7 @@ export function tokenize(input: string): Token[] {
         tokens.push({ kind: TokenKind.Number, value: constant });
       }
 
+      lastWasLiteral = false;
       index += run.length;
       continue;
     }
@@ -313,7 +357,9 @@ export function toRpn(tokens: readonly Token[]): Token[] {
  * Evaluate postfix tokens. `x` supplies the free variable for the grapher;
  * an expression that uses it without one is an error.
  */
-export function evaluateRpn(rpn: readonly Token[], x?: number): number {
+export function evaluateRpn(rpn: readonly Token[], context: EvalContext = {}): number {
+  const angleMode = context.angleMode ?? "rad";
+  const x = context.x;
   const stack: number[] = [];
 
   const pop = (): number => {
@@ -338,7 +384,7 @@ export function evaluateRpn(rpn: readonly Token[], x?: number): number {
         break;
 
       case TokenKind.Function:
-        stack.push(FUNCTIONS[token.name](pop()));
+        stack.push(FUNCTIONS[token.name](pop(), angleMode));
         break;
 
       case TokenKind.Operator: {
@@ -376,11 +422,11 @@ export function evaluateRpn(rpn: readonly Token[], x?: number): number {
 }
 
 /** Tokenize, order and evaluate in one go. Throws with a readable message. */
-export function evaluate(tokens: readonly Token[], x?: number): number {
-  return evaluateRpn(toRpn(tokens), x);
+export function evaluate(tokens: readonly Token[], context: EvalContext = {}): number {
+  return evaluateRpn(toRpn(tokens), context);
 }
 
 /** Evaluate an expression written as text, as the grapher's input is. */
-export function evaluateString(input: string, x?: number): number {
-  return evaluate(tokenize(input), x);
+export function evaluateString(input: string, context: EvalContext = {}): number {
+  return evaluate(tokenize(input), context);
 }

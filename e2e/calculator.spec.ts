@@ -94,7 +94,7 @@ test.describe("the 2nd shift layer", () => {
   const keypad = (page: Page) => page.locator("[data-keypad]");
 
   test("reveals the alternate legend and hides the primary", async ({ page }) => {
-    const root = page.locator('[data-keypad] button[data-action="constant"]');
+    const root = page.locator('[data-keypad] button[data-arg="\u03c0"]');
     // The accessible name, not textContent: the inactive legend is display:none
     // so it stays out of the accessibility tree, which is what keeps
     // getByRole("button", { name }) unambiguous.
@@ -109,7 +109,7 @@ test.describe("the 2nd shift layer", () => {
 
   test("runs the alternate action, then drops the shift", async ({ page }) => {
     await press(page, "2nd");
-    await page.locator('[data-keypad] button[data-action="constant"]').click();
+    await page.locator('[data-keypad] button[data-arg="\u03c0"]').click();
     await expect(expression(page)).toHaveText("(e)");
     await expect(keypad(page)).not.toHaveAttribute("data-shift", "on");
   });
@@ -121,7 +121,7 @@ test.describe("the 2nd shift layer", () => {
 
   test("reaches abs through 2nd on the root key", async ({ page }) => {
     await press(page, "2nd");
-    await page.locator('[data-keypad] button[data-action="function"]').click();
+    await page.locator('[data-keypad] button[data-arg="sqrt"]').click();
     await press(page, "5", "\u00b1", ")", "=");
     await expect(result(page)).toHaveText("5");
   });
@@ -130,8 +130,68 @@ test.describe("the 2nd shift layer", () => {
     await press(page, "1", "+", "1", "=");
     await expect(page.locator(".history-entry")).toHaveCount(1);
     await press(page, "2nd");
-    await page.locator('[data-keypad] button[data-action="memory"]').first().click();
+    await page.locator('[data-keypad] button[data-arg="clear"]').click();
     await expect(page.locator(".history-entry")).toHaveCount(0);
+  });
+});
+
+test.describe("trigonometry and angle modes", () => {
+  const angle = (page: Page) => page.locator("[data-angle-indicator]");
+
+  test("starts in radians and cycles with the mode key", async ({ page }) => {
+    await expect(angle(page)).toHaveText("RAD");
+    await press(page, "mode");
+    await expect(angle(page)).toHaveText("GRAD");
+    await press(page, "mode");
+    await expect(angle(page)).toHaveText("DEG");
+    await press(page, "mode");
+    await expect(angle(page)).toHaveText("RAD");
+  });
+
+  test("cos(60) is 0.5 in degrees", async ({ page }) => {
+    await press(page, "mode", "mode"); // rad -> grad -> deg
+    await expect(angle(page)).toHaveText("DEG");
+    await press(page, "cos", "6", "0", ")", "=");
+    await expect(result(page)).toHaveText("0.5");
+  });
+
+  test("the same keys mean something else in radians", async ({ page }) => {
+    await press(page, "cos", "6", "0", ")", "=");
+    await expect(result(page)).toHaveText("-0.952412980415");
+  });
+
+  test("reaches inverse trig through 2nd", async ({ page }) => {
+    await press(page, "mode", "mode");
+    await press(page, "2nd");
+    await page.locator('[data-keypad] button[data-arg="sin"]').click();
+    await press(page, "1", ")", "=");
+    await expect(result(page)).toHaveText("90");
+  });
+
+  test("wires up log and ln", async ({ page }) => {
+    await press(page, "log", "1", "0", "0", "0", ")", "=");
+    await expect(result(page)).toHaveText("3");
+    await press(page, "AC", "ln", "1", ")", "=");
+    await expect(result(page)).toHaveText("0");
+  });
+
+  test("reaches 10^ and e^ through 2nd", async ({ page }) => {
+    await press(page, "2nd");
+    await page.locator('[data-keypad] button[data-arg="log"]').click();
+    await press(page, "3", ")", "=");
+    await expect(result(page)).toHaveText("1,000");
+
+    await press(page, "AC", "2nd");
+    await page.locator('[data-keypad] button[data-arg="ln"]').click();
+    await press(page, "0", ")", "=");
+    await expect(result(page)).toHaveText("1");
+  });
+
+  test("remembers the angle mode across a reload", async ({ page }) => {
+    await press(page, "mode", "mode");
+    await expect(angle(page)).toHaveText("DEG");
+    await page.reload();
+    await expect(angle(page)).toHaveText("DEG");
   });
 });
 

@@ -1,6 +1,7 @@
 import type { PersistedState } from "./interfaces/persisted-state.js";
 import type { HistoryEntry } from "./interfaces/history-entry.js";
 import type { Theme } from "./types/theme.js";
+import type { AngleMode } from "./types/angle-mode.js";
 
 const STORAGE_KEY = "calculator-fun.state";
 
@@ -34,7 +35,12 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
     if (typeof parsed !== "object" || parsed === null) return {};
 
     const record = parsed as Record<string, unknown>;
-    const state: { history?: HistoryEntry[]; memory?: number; theme?: Theme } = {};
+    const state: {
+      history?: HistoryEntry[];
+      memory?: number;
+      theme?: Theme;
+      angleMode?: AngleMode;
+    } = {};
 
     if (Array.isArray(record["history"])) {
       state.history = record["history"].filter(isHistoryEntry);
@@ -44,6 +50,13 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
     }
     if (record["theme"] === "light" || record["theme"] === "dark") {
       state.theme = record["theme"];
+    }
+    if (
+      record["angleMode"] === "deg" ||
+      record["angleMode"] === "rad" ||
+      record["angleMode"] === "grad"
+    ) {
+      state.angleMode = record["angleMode"];
     }
     return state;
   } catch {

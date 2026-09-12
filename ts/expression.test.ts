@@ -69,7 +69,7 @@ describe("implied multiplication", () => {
     ["(1+1)(2+1)", 6],
     ["2sqrt(9)", 6],
   ])("%s = %s", (input, expected) => {
-    expect(evaluateString(input, 3)).toBe(expected);
+    expect(evaluateString(input, { x: 3 })).toBe(expected);
   });
 });
 
@@ -119,7 +119,7 @@ describe("functions and constants", () => {
     });
 
     it("reads a constant next to the variable", () => {
-      expect(evaluateString("\u03c0x", 2)).toBeCloseTo(Math.PI * 2);
+      expect(evaluateString("\u03c0x", { x: 2 })).toBeCloseTo(Math.PI * 2);
     });
 
     it("still rejects a genuinely unknown name", () => {
@@ -129,10 +129,10 @@ describe("functions and constants", () => {
     // The error used to name the leftover fragment after known prefixes had
     // been eaten: "sinh" reported 'Unknown name "h"'.
     it.each([
-      ["sinh(1)", "sinh"],
-      ["exp(2)", "exp"],
       ["cosec(1)", "cosec"],
-      ["xyz", "xyz"],
+      ["arcsin(1)", "arcsin"],
+      ["wobble", "wobble"],
+      ["sinhh(1)", "sinhh"],
     ])("names the whole word %j in the error", (input, word) => {
       expect(() => evaluateString(input)).toThrow(`Unknown name "${word}"`);
     });
@@ -140,10 +140,10 @@ describe("functions and constants", () => {
     // Splitting a letter run into names must not turn a typo into a silent
     // answer: "cose(x)" decomposes to cos + e, which used to evaluate as
     // cos(e)*x rather than being rejected.
-    it.each(["cose(x)", "tane(2)", "sine", "abse(4)", "lne(3)"])(
+    it.each(["cose(x)", "tane(2)", "sine", "abse(4)", "lnn(3)"])(
       "rejects the typo %j rather than decomposing it",
       (input) => {
-        expect(() => evaluateString(input, 2)).toThrow(/Unknown name/);
+        expect(() => evaluateString(input, { x: 2 })).toThrow(/Unknown name/);
       }
     );
 
@@ -159,7 +159,7 @@ describe("functions and constants", () => {
       ["ln (2)", Math.LN2],
       ["sqrt  (  9  )", 3],
     ])("accepts whitespace before the bracket in %j", (input, expected) => {
-      expect(evaluateString(input, 1)).toBeCloseTo(expected);
+      expect(evaluateString(input, { x: 1 })).toBeCloseTo(expected);
     });
 
     it("still accepts every legitimate function call", () => {
@@ -167,6 +167,16 @@ describe("functions and constants", () => {
       expect(evaluateString("2sqrt(9)")).toBe(6);
       expect(evaluateString("sqrt(abs(-16))")).toBe(4);
       expect(evaluateString("\u03c0sqrt(4)")).toBeCloseTo(Math.PI * 2);
+    });
+
+    // A greedy split committed to the longest prefix and could dead-end on a
+    // run that does decompose.
+    it.each([
+      ["expi", Math.E * 2 * Math.PI],
+      ["pie", Math.PI * Math.E],
+      ["exe", Math.E * 2 * Math.E],
+    ])("backtracks to split %j", (input, expected) => {
+      expect(evaluateString(input, { x: 2 })).toBeCloseTo(expected);
     });
 
     it("does not let a short name shadow a longer one", () => {
@@ -192,9 +202,9 @@ describe("functions and constants", () => {
     });
 
     it("keeps sin(x)*x distinct from sin(x*x)", () => {
-      expect(evaluateString("sin(x)*x", 3)).toBeCloseTo(Math.sin(3) * 3);
-      expect(evaluateString("sin(x*x)", 3)).toBeCloseTo(Math.sin(9));
-      expect(evaluateString("sin(x)*x", 3)).not.toBeCloseTo(Math.sin(9));
+      expect(evaluateString("sin(x)*x", { x: 3 })).toBeCloseTo(Math.sin(3) * 3);
+      expect(evaluateString("sin(x*x)", { x: 3 })).toBeCloseTo(Math.sin(9));
+      expect(evaluateString("sin(x)*x", { x: 3 })).not.toBeCloseTo(Math.sin(9));
     });
 
     it("orders postfix correctly for sqrt(9)+1", () => {
@@ -205,9 +215,77 @@ describe("functions and constants", () => {
   });
 });
 
+describe("angle modes", () => {
+  it.each([
+    ["deg", 60, 0.5],
+    ["grad", 200 / 3, 0.5],
+  ] as const)("reads cos in %s", (angleMode, input, expected) => {
+    expect(evaluateString(`cos(${input})`, { angleMode })).toBeCloseTo(expected);
+  });
+
+  it("defaults to radians", () => {
+    expect(evaluateString("cos(0)")).toBe(1);
+    expect(evaluateString("sin(pi/2)")).toBeCloseTo(1);
+  });
+
+  it.each(["deg", "rad", "grad"] as const)("a full turn of sin is 0 in %s", (angleMode) => {
+    const turn = { deg: 360, rad: 2 * Math.PI, grad: 400 }[angleMode];
+    expect(evaluateString(`sin(${turn})`, { angleMode })).toBeCloseTo(0);
+  });
+
+  it("reports inverse trig in the active mode", () => {
+    expect(evaluateString("asin(1)", { angleMode: "deg" })).toBeCloseTo(90);
+    expect(evaluateString("asin(1)", { angleMode: "grad" })).toBeCloseTo(100);
+    expect(evaluateString("asin(1)", { angleMode: "rad" })).toBeCloseTo(Math.PI / 2);
+  });
+
+  // asin only returns its principal value, so the angle has to sit inside
+  // [-90deg, 90deg] for the round trip to mean anything.
+  it.each([
+    ["deg", 30],
+    ["rad", 0.5],
+    ["grad", 30],
+  ] as const)("round-trips sin then asin in %s", (angleMode, angle) => {
+    expect(evaluateString(`asin(sin(${angle}))`, { angleMode })).toBeCloseTo(angle);
+  });
+
+  it("leaves non-circular functions alone", () => {
+    for (const angleMode of ["deg", "rad", "grad"] as const) {
+      expect(evaluateString("ln(e)", { angleMode })).toBeCloseTo(1);
+      expect(evaluateString("sqrt(9)", { angleMode })).toBe(3);
+      expect(evaluateString("sinh(0)", { angleMode })).toBe(0);
+    }
+  });
+});
+
+describe("the new functions", () => {
+  it.each([
+    ["asin(0)", 0],
+    ["acos(1)", 0],
+    ["atan(0)", 0],
+    ["sinh(0)", 0],
+    ["cosh(0)", 1],
+    ["tanh(0)", 0],
+    ["exp(0)", 1],
+    ["exp(1)", Math.E],
+    ["log(1000)", 3],
+    ["ln(1)", 0],
+  ])("%s = %s", (input, expected) => {
+    expect(evaluateString(input)).toBeCloseTo(expected);
+  });
+
+  it("pairs exp with ln", () => {
+    expect(evaluateString("ln(exp(5))")).toBeCloseTo(5);
+  });
+
+  it("satisfies the hyperbolic identity", () => {
+    expect(evaluateString("cosh(2)^2-sinh(2)^2")).toBeCloseTo(1);
+  });
+});
+
 describe("the variable x", () => {
   it("substitutes a value", () => {
-    expect(evaluateString("x^2+1", 3)).toBe(10);
+    expect(evaluateString("x^2+1", { x: 3 })).toBe(10);
   });
 
   it("is an error with no value supplied", () => {
@@ -289,8 +367,19 @@ describe("scientific notation", () => {
 });
 
 describe("two numbers in a row", () => {
-  it.each(["1.2.3", "1 2", "3.4 5"])("rejects %j", (input) => {
+  it.each(["1.2.3", "1 2", "3.4 5"])("rejects the malformed literal %j", (input) => {
     expect(() => evaluateString(input)).toThrow(/Unexpected number/);
+  });
+
+  // A constant is a number token too, but "π5" is a product, not a malformed
+  // literal -- it used to be rejected with no way forward but DEL.
+  it.each([
+    ["\u03c05", Math.PI * 5],
+    ["5\u03c0", 5 * Math.PI],
+    ["\u03c05+1", Math.PI * 5 + 1],
+    ["(e)5", Math.E * 5],
+  ])("reads %j as a product", (input, expected) => {
+    expect(evaluateString(input)).toBeCloseTo(expected);
   });
 });
 

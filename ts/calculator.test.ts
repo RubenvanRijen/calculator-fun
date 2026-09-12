@@ -292,6 +292,132 @@ describe("Calculator", () => {
     });
   });
 
+  describe("angle mode", () => {
+    it("starts in radians", () => {
+      expect(calculator.angleMode).toBe("rad");
+    });
+
+    it("changes what trigonometry means", () => {
+      calculator.appendFunction("cos");
+      type(calculator, ["6", "0", ")", "="]);
+      expect(calculator.resultDisplay).toBe("-0.952412980415");
+
+      calculator.clear();
+      calculator.angleMode = "deg";
+      calculator.appendFunction("cos");
+      type(calculator, ["6", "0", ")", "="]);
+      expect(calculator.resultDisplay).toBe("0.5");
+    });
+
+    it("applies to the live preview as well as the result", () => {
+      calculator.angleMode = "deg";
+      calculator.appendFunction("sin");
+      type(calculator, ["9", "0"]);
+      expect(calculator.resultDisplay).toBe("1");
+    });
+
+    it("survives AC, like memory", () => {
+      calculator.angleMode = "grad";
+      type(calculator, ["AC"]);
+      expect(calculator.angleMode).toBe("grad");
+    });
+  });
+
+  describe("angle mode refresh", () => {
+    // The preview used to keep the value worked out in the previous mode, and
+    // M+ banked that stale number.
+    it("re-evaluates the preview when the mode changes", () => {
+      calculator.appendFunction("cos");
+      type(calculator, ["6", "0"]);
+      expect(calculator.resultDisplay).toBe("-0.952412980415");
+
+      calculator.angleMode = "deg";
+      expect(calculator.resultDisplay).toBe("0.5");
+    });
+
+    it("banks the value for the mode actually showing", () => {
+      calculator.appendFunction("cos");
+      type(calculator, ["6", "0"]);
+      calculator.angleMode = "deg";
+      calculator.memoryAdd();
+      expect(calculator.memory).toBe(0.5);
+    });
+
+    it("still reads back through the getter", () => {
+      calculator.angleMode = "grad";
+      expect(calculator.angleMode).toBe("grad");
+    });
+  });
+
+  describe("DEL undoes presses, not characters", () => {
+    // The old check matched on how the text looked, so an expression typed
+    // character by character could be wiped by a single DEL.
+    it("removes one character when the text was typed one key at a time", () => {
+      type(calculator, ["1", "0", "^"]);
+      calculator.openParen();
+      expect(calculator.expression).toBe("10^(");
+      type(calculator, ["DEL"]);
+      expect(calculator.expression).toBe("10^");
+    });
+
+    it("removes the whole thing when one key produced it", () => {
+      calculator.insert("10^(");
+      expect(calculator.expression).toBe("10^(");
+      type(calculator, ["DEL"]);
+      expect(calculator.expression).toBe("");
+    });
+
+    it("tracks a replaced trailing operator", () => {
+      type(calculator, ["5", "+"]);
+      type(calculator, ["*"]);
+      type(calculator, ["DEL"]);
+      expect(calculator.expression).toBe("5");
+    });
+
+    it("falls back to characters after a rewrite", () => {
+      type(calculator, ["5", "0", "%"]);
+      const before = calculator.expression;
+      type(calculator, ["DEL"]);
+      expect(calculator.expression).toBe(before.slice(0, -1));
+    });
+
+    it("undoes a function key in one press", () => {
+      type(calculator, ["√"]);
+      type(calculator, ["DEL"]);
+      expect(calculator.expression).toBe("");
+    });
+  });
+
+  describe("insert", () => {
+    it("appends raw keypress text", () => {
+      type(calculator, ["2"]);
+      calculator.insert("10^(");
+      type(calculator, ["3", ")", "="]);
+      expect(calculator.resultDisplay).toBe("2,000");
+    });
+
+    it("is undone by a single DEL", () => {
+      calculator.insert("10^(");
+      type(calculator, ["DEL"]);
+      expect(calculator.expression).toBe("");
+    });
+
+    it("starts fresh after =", () => {
+      type(calculator, ["2", "+", "2", "="]);
+      calculator.insert("10^(");
+      expect(calculator.expression).toBe("10^(");
+    });
+
+    // The guard only looked for a digit, so "2." got no multiplication sign
+    // and 2.10^3 came out as 9.261 instead of 2000.
+    it("multiplies after a trailing decimal point", () => {
+      type(calculator, ["2", "."]);
+      calculator.insert("10^(");
+      type(calculator, ["3", ")", "="]);
+      expect(calculator.resultDisplay).toBe("2,000");
+    });
+  });
+
   describe("memory", () => {
     it("starts empty", () => {
       expect(calculator.memory).toBe(0);

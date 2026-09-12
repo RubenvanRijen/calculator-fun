@@ -24,6 +24,7 @@
                 <div class="output-meta">
                     <span data-memory-indicator class="badge" hidden>M</span>
                     <span data-paren-indicator class="badge" hidden>( 0</span>
+                    <span data-angle-indicator class="badge">RAD</span>
                     <div data-expression class="expression" aria-live="polite"></div>
                 </div>
                 <div data-result class="result" aria-live="polite"></div>
@@ -31,15 +32,20 @@
             </div>
 
             <button data-action="second" class="key-second"><span class="legend">2nd</span></button>
+            <button data-action="angle-mode" class="key-small"><span class="legend">mode</span></button>
             <button data-action="function" data-arg="sqrt" data-action-alt="function" data-arg-alt="abs" class="key-small"><span class="legend">√</span><span class="legend-alt">abs</span></button>
             <button data-action="square" class="key-small"><span class="legend">x²</span></button>
             <button data-action="reciprocal" class="key-small"><span class="legend">1/x</span></button>
-            <button data-action="constant" data-arg="π" data-action-alt="constant" data-arg-alt="(e)" class="key-small"><span class="legend">π</span><span class="legend-alt">e</span></button>
+            <button data-action="function" data-arg="sin" data-action-alt="function" data-arg-alt="asin" class="key-small"><span class="legend">sin</span><span class="legend-alt">sin⁻¹</span></button>
+            <button data-action="function" data-arg="cos" data-action-alt="function" data-arg-alt="acos" class="key-small"><span class="legend">cos</span><span class="legend-alt">cos⁻¹</span></button>
+            <button data-action="function" data-arg="tan" data-action-alt="function" data-arg-alt="atan" class="key-small"><span class="legend">tan</span><span class="legend-alt">tan⁻¹</span></button>
+            <button data-action="function" data-arg="log" data-action-alt="insert" data-arg-alt="10^(" class="key-small"><span class="legend">log</span><span class="legend-alt">10ˣ</span></button>
+            <button data-action="function" data-arg="ln" data-action-alt="function" data-arg-alt="exp" class="key-small"><span class="legend">ln</span><span class="legend-alt">eˣ</span></button>
             <button data-action="memory" data-arg="clear" data-action-alt="clear-history" class="key-small"><span class="legend">MC</span><span class="legend-alt">CH</span></button>
             <button data-action="memory" data-arg="recall" class="key-small"><span class="legend">MR</span></button>
             <button data-action="memory" data-arg="add" class="key-small"><span class="legend">M+</span></button>
             <button data-action="memory" data-arg="subtract" class="key-small"><span class="legend">M−</span></button>
-            <button data-action="operation" data-arg="^" class="key-small"><span class="legend">xⁿ</span></button>
+            <button data-action="constant" data-arg="π" data-action-alt="constant" data-arg-alt="(e)" class="key-small"><span class="legend">π</span><span class="legend-alt">e</span></button>
             <button data-action="open-paren" class="key-small"><span class="legend">(</span></button>
             <button data-action="close-paren" class="key-small"><span class="legend">)</span></button>
             <button data-action="clear" class="key-action"><span class="legend">AC</span></button>
@@ -48,20 +54,21 @@
             <button data-action="number" data-arg="7"><span class="legend">7</span></button>
             <button data-action="number" data-arg="8"><span class="legend">8</span></button>
             <button data-action="number" data-arg="9"><span class="legend">9</span></button>
-            <button data-action="percent"><span class="legend">%</span></button>
+            <button data-action="operation" data-arg="^" class="key-small"><span class="legend">xⁿ</span></button>
             <button data-action="operation" data-arg="*" class="key-operator"><span class="legend">*</span></button>
             <button data-action="number" data-arg="4"><span class="legend">4</span></button>
             <button data-action="number" data-arg="5"><span class="legend">5</span></button>
             <button data-action="number" data-arg="6"><span class="legend">6</span></button>
-            <button data-action="sign"><span class="legend">±</span></button>
+            <button data-action="percent"><span class="legend">%</span></button>
             <button data-action="operation" data-arg="-" class="key-operator"><span class="legend">-</span></button>
             <button data-action="number" data-arg="1"><span class="legend">1</span></button>
             <button data-action="number" data-arg="2"><span class="legend">2</span></button>
             <button data-action="number" data-arg="3"><span class="legend">3</span></button>
-            <button data-action="number" data-arg="."><span class="legend">.</span></button>
+            <button data-action="sign"><span class="legend">±</span></button>
             <button data-action="operation" data-arg="+" class="key-operator"><span class="legend">+</span></button>
             <button data-action="number" data-arg="0" class="span-two"><span class="legend">0</span></button>
-            <button data-action="equals" class="key-equals span-three"><span class="legend">=</span></button>
+            <button data-action="number" data-arg="."><span class="legend">.</span></button>
+            <button data-action="equals" class="key-equals span-two"><span class="legend">=</span></button>
         </div>
 
         <aside class="panel">
@@ -123,7 +130,10 @@
         <kbd>Backspace</kbd> to undo a keypress, <kbd>Esc</kbd> to clear.
         <br>
         <kbd>2nd</kbd> reaches the alternate on keys that show one:
-        &radic;&nbsp;&rarr;&nbsp;abs, &pi;&nbsp;&rarr;&nbsp;e, MC&nbsp;&rarr;&nbsp;clear history.
+        sin/cos/tan&nbsp;&rarr;&nbsp;their inverses, log&nbsp;&rarr;&nbsp;10&#x02E3;,
+        ln&nbsp;&rarr;&nbsp;e&#x02E3;, &radic;&nbsp;&rarr;&nbsp;abs,
+        &pi;&nbsp;&rarr;&nbsp;e, MC&nbsp;&rarr;&nbsp;clear history.
+        <kbd>mode</kbd> cycles RAD &rarr; GRAD &rarr; DEG.
     </p>
 </body>
 

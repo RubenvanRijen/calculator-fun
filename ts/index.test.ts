@@ -218,6 +218,31 @@ describe("setupCalculator", () => {
       expect(entries()).toHaveLength(1);
     });
 
+    // The display sits inside the keypad grid, so the root listener never
+    // sees a click on it -- the keypad listener has to spend the shift.
+    it("is spent by a click inside the keypad that misses a key", () => {
+      press("2nd");
+      root.querySelector<HTMLElement>("[data-result]")?.click();
+      expect(keypad()?.dataset["shift"]).not.toBe("on");
+    });
+
+    it("does not wipe history when MC follows a click on the display", () => {
+      press("1", "+", "1", "=");
+      press("2nd");
+      root.querySelector<HTMLElement>("[data-result]")?.click();
+      keyFor("memory").click();
+      expect(entries()).toHaveLength(1);
+    });
+
+    it("announces its state to assistive technology", () => {
+      const second = keyFor("second");
+      expect(second.getAttribute("aria-pressed")).toBe("false");
+      press("2nd");
+      expect(second.getAttribute("aria-pressed")).toBe("true");
+      press("7");
+      expect(second.getAttribute("aria-pressed")).toBe("false");
+    });
+
     it("reaches abs through 2nd on the root key", () => {
       press("2nd");
       keyFor("function").click();
@@ -400,6 +425,29 @@ describe("setupCalculator", () => {
       input?.focus();
       type("5");
       expect(expression()).toBe("");
+    });
+
+    // Clicking a key left focus on it, so the next Enter re-activated that key
+    // instead of computing: click cos, type 60, press Enter -> "cos(60cos(".
+    it("does not let Enter re-activate the key that was just clicked", () => {
+      const cos = root.querySelector<HTMLButtonElement>('[data-arg="cos"]');
+      // A real browser focuses the button it was clicked on; jsdom does not,
+      // so focus it explicitly to reproduce the state the bug needed.
+      cos?.focus();
+      cos?.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+      expect(document.activeElement).not.toBe(cos);
+
+      type("6", "0", "Enter");
+      expect(expression()).not.toContain("cos(60cos(");
+      expect(result()).toBe("-0.952412980415");
+    });
+
+    it("leaves focus alone for keyboard activation", () => {
+      const seven = button("7");
+      seven.focus();
+      // detail 0 is what a keyboard-generated click reports.
+      seven.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+      expect(document.activeElement).toBe(seven);
     });
 
     it("stops listening once destroyed", () => {
@@ -586,6 +634,40 @@ describe("setupCalculator", () => {
   describe("destroy", () => {
     // The root click listener outlives the markup, so a stale instance could
     // otherwise keep writing its own state back to localStorage.
+    it("stops the keypad listener too", () => {
+      // Re-setup on the *same* markup: without removal both instances would
+      // respond to every key, and the dead one would persist stale state.
+      const dead = handle.calculator;
+      handle.destroy();
+
+      const live = setupCalculator(root);
+      press("5");
+
+      expect(live.calculator.expression).toBe("5");
+      // The point of the test: the destroyed instance must not have reacted.
+      expect(dead.expression).toBe("");
+
+      live.destroy();
+      handle = setupCalculator(root);
+    });
+
+    it("stops the panel listeners too", () => {
+      // destroy() used to leave the theme toggle, tabs and Clear attached, so
+      // a dead instance kept persisting its own state.
+      press("1", "+", "1", "=");
+      const dead = handle.calculator;
+      handle.destroy();
+
+      root.querySelector<HTMLElement>("[data-history-clear]")?.click();
+      expect(dead.history).toHaveLength(1);
+
+      const themeBefore = document.documentElement.dataset["theme"];
+      root.querySelector<HTMLElement>("[data-theme-toggle]")?.click();
+      expect(document.documentElement.dataset["theme"]).toBe(themeBefore);
+
+      handle = setupCalculator(root);
+    });
+
     it("stops the outside-click listener too", () => {
       press("1", "+", "1", "=");
       press("2nd");

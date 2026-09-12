@@ -47,7 +47,8 @@ export function plot(
   for (let index = 0; index < count; index += 1) {
     const x = xMin + index * step;
     try {
-      const y = evaluateRpn(rpn, x);
+      // Graphs are always drawn in radians, whatever the keypad is set to.
+      const y = evaluateRpn(rpn, { x });
       evaluated += 1;
       sampled.push(Number.isFinite(y) ? { x, y } : null);
     } catch {
@@ -58,7 +59,7 @@ export function plot(
   if (evaluated === 0) {
     // Every sample threw, so the expression itself is the problem.
     try {
-      evaluateRpn(rpn, 1);
+      evaluateRpn(rpn, { x: 1 });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Invalid expression";
       return { ...EMPTY, error: message };
