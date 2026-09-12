@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { setupCalculator } from "@/index.ts";
+import { MAX_SIZE } from "@/matrices.ts";
 import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
 
 // Read the real page rather than a hand-copied fixture, so these tests cannot
@@ -1258,6 +1259,202 @@ describe("setupCalculator", () => {
       act("plot");
       expect(fit()).toContain("Nothing to plot");
       expect(root.querySelector<HTMLElement>('[data-panel="stats"]')?.hidden).toBe(false);
+    });
+  });
+
+  describe("matrix", () => {
+    const cell = (name: string, row: number, column: number) =>
+      root.querySelector<HTMLInputElement>(
+        `[data-matrix-cell="${name}"][data-matrix-row="${row}"][data-matrix-column="${column}"]`
+      );
+    const fill = (name: string, grid: number[][]) => {
+      grid.forEach((row, r) => row.forEach((value, c) => {
+        const input = cell(name, r, c);
+        if (input) input.value = String(value);
+        input?.dispatchEvent(new Event("input", { bubbles: true }));
+      }));
+    };
+    const resize = (name: string, rows: number, columns: number) => {
+      const rowsInput = root.querySelector<HTMLInputElement>(`[data-matrix-rows="${name}"]`);
+      const colsInput = root.querySelector<HTMLInputElement>(`[data-matrix-columns="${name}"]`);
+      if (rowsInput) rowsInput.value = String(rows);
+      if (colsInput) colsInput.value = String(columns);
+      // Resizing follows "change", which is what a field fires when it has
+      // settled, rather than every keystroke on the way there.
+      colsInput?.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const run = (what: string) =>
+      root.querySelector<HTMLElement>(`[data-matrix-do="${what}"]`)?.click();
+    const answer = () =>
+      [...root.querySelectorAll("[data-matrix-result] tr")].map((tr) =>
+        [...tr.querySelectorAll("td")].map((td) => td.textContent)
+      );
+    const scalar = () => root.querySelector("[data-matrix-result] p")?.textContent ?? "";
+    const error = () => {
+      const element = root.querySelector<HTMLElement>("[data-matrix-error]");
+      return element?.hidden === true ? "" : element?.textContent ?? "";
+    };
+
+    beforeEach(() => {
+      button("Matrix").click();
+    });
+
+    it("has a tab and a panel", () => {
+      expect(root.querySelector('[data-panel="matrix"]')).not.toBeNull();
+      expect(root.querySelector('[data-tab="matrix"]')).not.toBeNull();
+    });
+
+    it("starts with two 2 by 2 grids of zeros", () => {
+      expect(root.querySelectorAll('[data-matrix-cell="A"]').length).toBe(4);
+      expect(cell("A", 0, 0)?.value).toBe("0");
+    });
+
+    it("adds two matrices", () => {
+      fill("A", [[1, 2], [3, 4]]);
+      fill("B", [[10, 20], [30, 40]]);
+      run("add");
+      expect(answer()).toEqual([["11", "22"], ["33", "44"]]);
+    });
+
+    it("multiplies two matrices", () => {
+      fill("A", [[1, 2], [3, 4]]);
+      fill("B", [[5, 6], [7, 8]]);
+      run("multiply");
+      expect(answer()).toEqual([["19", "22"], ["43", "50"]]);
+    });
+
+    it("transposes", () => {
+      resize("A", 2, 3);
+      fill("A", [[1, 2, 3], [4, 5, 6]]);
+      run("transpose-A");
+      expect(answer()).toEqual([["1", "4"], ["2", "5"], ["3", "6"]]);
+    });
+
+    it("takes a determinant", () => {
+      fill("A", [[1, 2], [3, 4]]);
+      run("determinant-A");
+      expect(scalar()).toBe("det A = -2");
+    });
+
+    it("inverts", () => {
+      fill("A", [[4, 7], [2, 6]]);
+      run("inverse-A");
+      expect(answer()).toEqual([["0.6", "-0.7"], ["-0.2", "0.4"]]);
+    });
+
+    it("keeps the answer up to date as a cell is edited", () => {
+      fill("A", [[1, 2], [3, 4]]);
+      run("determinant-A");
+      expect(scalar()).toBe("det A = -2");
+
+      const input = cell("A", 0, 0);
+      if (input) input.value = "5";
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+      // 5*4 - 2*3 = 14. A stale -2 would be an answer to nothing on screen.
+      expect(scalar()).toBe("det A = 14");
+    });
+
+    it("does not rebuild the grid while a cell is being typed in", () => {
+      // Rebuilding replaces the very element being typed into, which loses
+      // the caret and the focus with it.
+      const input = cell("A", 0, 0);
+      input?.focus();
+      if (input) input.value = "7";
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(cell("A", 0, 0)).toBe(input);
+      expect(document.activeElement).toBe(input);
+    });
+
+    it("rebuilds the grid when the shape changes", () => {
+      resize("A", 3, 3);
+      expect(root.querySelectorAll('[data-matrix-cell="A"]').length).toBe(9);
+    });
+
+    it("keeps the numbers already typed when it grows", () => {
+      fill("A", [[1, 2], [3, 4]]);
+      resize("A", 3, 3);
+      expect(cell("A", 0, 0)?.value).toBe("1");
+      expect(cell("A", 1, 1)?.value).toBe("4");
+      expect(cell("A", 2, 2)?.value).toBe("0");
+    });
+
+    it("says why two matrices cannot be added", () => {
+      resize("B", 1, 1);
+      run("add");
+      expect(error()).toMatch(/same size/);
+      expect(answer()).toEqual([]);
+    });
+
+    it("says why a matrix cannot be multiplied", () => {
+      resize("A", 2, 2);
+      resize("B", 3, 3);
+      run("multiply");
+      expect(error()).toMatch(/columns/);
+    });
+
+    it("says why a matrix has no determinant", () => {
+      resize("A", 2, 3);
+      run("determinant-A");
+      expect(error()).toMatch(/square/);
+    });
+
+    it("says why a matrix has no inverse", () => {
+      fill("A", [[1, 2], [2, 4]]);
+      run("inverse-A");
+      expect(error()).toMatch(/singular/);
+    });
+
+    it("clears the error once the matrices fit again", () => {
+      resize("B", 1, 1);
+      run("add");
+      expect(error()).not.toBe("");
+
+      resize("B", 2, 2);
+      expect(error()).toBe("");
+      expect(answer()).toEqual([["0", "0"], ["0", "0"]]);
+    });
+
+    it("prints a large determinant exactly", () => {
+      resize("A", 4, 4);
+      fill("A", [[89, 85, -57, -87], [83, -76, 67, -41], [-84, 83, -19, 90], [22, -69, -72, 68]]);
+      run("determinant-A");
+      // Bareiss works this out exactly; rounding it to eight significant
+      // digits on the way to the screen would show -137266790.
+      expect(scalar()).toBe("det A = -137266786");
+    });
+
+    it("does not resize while the size is still being typed", () => {
+      resize("A", 4, 4);
+      fill("A", [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]);
+
+      // Typing 12 passes through 1. Acting on that keystroke drops three rows,
+      // and growing back cannot bring their numbers with it.
+      const rows = root.querySelector<HTMLInputElement>('[data-matrix-rows="A"]');
+      if (rows) rows.value = "1";
+      rows?.dispatchEvent(new Event("input", { bubbles: true }));
+      if (rows) rows.value = "12";
+      rows?.dispatchEvent(new Event("input", { bubbles: true }));
+      rows?.dispatchEvent(new Event("change", { bubbles: true }));
+
+      expect(cell("A", 3, 3)?.value).toBe("16");
+    });
+
+    it("puts a clamped size back in the field", () => {
+      const rows = root.querySelector<HTMLInputElement>('[data-matrix-rows="A"]');
+      if (rows) rows.value = "12";
+      rows?.dispatchEvent(new Event("change", { bubbles: true }));
+      expect(rows?.value).toBe("4");
+    });
+
+    it("caps the size spinners at the size the store enforces", () => {
+      const rows = root.querySelector<HTMLInputElement>('[data-matrix-rows="A"]');
+      expect(rows?.max).toBe(String(MAX_SIZE));
+    });
+
+    it("works on B as well as A", () => {
+      fill("B", [[1, 2], [3, 4]]);
+      run("determinant-B");
+      expect(scalar()).toBe("det B = -2");
     });
   });
 

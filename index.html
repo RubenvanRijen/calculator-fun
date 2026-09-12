@@ -85,6 +85,7 @@
                 <button data-tab="graph" class="tab" role="tab" type="button" aria-selected="false">ƒ(x)</button>
                 <button data-tab="table" class="tab" role="tab" type="button" aria-selected="false">Table</button>
                 <button data-tab="stats" class="tab" role="tab" type="button" aria-selected="false">Stats</button>
+                <button data-tab="matrix" class="tab" role="tab" type="button" aria-selected="false">Matrix</button>
                 <button data-tab="vars" class="tab" role="tab" type="button" aria-selected="false">Vars</button>
             </div>
 
@@ -170,6 +171,65 @@
                         <tbody data-stats-summary></tbody>
                     </table>
                 </div>
+            </section>
+
+            <section data-panel="matrix" class="panel-body" hidden>
+                <p class="muted">
+                    Matrices are worked on here rather than typed into a sum:
+                    there is nowhere in &ldquo;2 + 3&rdquo; for a grid to go.
+                </p>
+
+                <div class="matrix-editor">
+                    <div class="matrix-head">
+                        <span class="field-label matrix-name">A</span>
+                        <label class="field field-inline">
+                            <span class="field-label">rows</span>
+                            <input data-matrix-rows="A" class="field-input size-input" type="number"
+                                min="1" max="4" step="1" value="2" aria-label="Rows in A">
+                        </label>
+                        <label class="field field-inline">
+                            <span class="field-label">cols</span>
+                            <input data-matrix-columns="A" class="field-input size-input" type="number"
+                                min="1" max="4" step="1" value="2" aria-label="Columns in A">
+                        </label>
+                    </div>
+                    <div data-matrix-grid="A" class="matrix-grid"></div>
+                </div>
+                <div class="matrix-editor">
+                    <div class="matrix-head">
+                        <span class="field-label matrix-name">B</span>
+                        <label class="field field-inline">
+                            <span class="field-label">rows</span>
+                            <input data-matrix-rows="B" class="field-input size-input" type="number"
+                                min="1" max="4" step="1" value="2" aria-label="Rows in B">
+                        </label>
+                        <label class="field field-inline">
+                            <span class="field-label">cols</span>
+                            <input data-matrix-columns="B" class="field-input size-input" type="number"
+                                min="1" max="4" step="1" value="2" aria-label="Columns in B">
+                        </label>
+                    </div>
+                    <div data-matrix-grid="B" class="matrix-grid"></div>
+                </div>
+
+                <div class="examples">
+                    <button data-matrix-do="add" class="chip" type="button">A+B</button>
+                    <button data-matrix-do="subtract" class="chip" type="button">A&minus;B</button>
+                    <button data-matrix-do="multiply" class="chip" type="button">A&times;B</button>
+                </div>
+                <div class="examples">
+                    <button data-matrix-do="transpose-A" class="chip" type="button">A&#7488;</button>
+                    <button data-matrix-do="determinant-A" class="chip" type="button">det A</button>
+                    <button data-matrix-do="inverse-A" class="chip" type="button">A&#8315;&sup1;</button>
+                </div>
+                <div class="examples">
+                    <button data-matrix-do="transpose-B" class="chip" type="button">B&#7488;</button>
+                    <button data-matrix-do="determinant-B" class="chip" type="button">det B</button>
+                    <button data-matrix-do="inverse-B" class="chip" type="button">B&#8315;&sup1;</button>
+                </div>
+
+                <div data-matrix-result class="matrix-answer"></div>
+                <p data-matrix-error class="error" role="alert" hidden></p>
             </section>
 
             <section data-panel="vars" class="panel-body" hidden>

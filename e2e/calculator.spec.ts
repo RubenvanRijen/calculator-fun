@@ -597,6 +597,78 @@ test.describe("graph", () => {
     await expect(page.locator('[data-stats-cell="L1"][data-stats-row="0"]')).toHaveValue("42");
   });
 
+  test("keeps every tab inside the panel", async ({ page }) => {
+    // Each new tab has squeezed this row, and the last one was cut off the
+    // edge when the sixth arrived. Neither the unit suite nor the typechecker
+    // can see a tab fall off a panel.
+    const panel = await page.locator(".panel").boundingBox();
+    const tabs = page.locator(".tab");
+
+    for (let index = 0; index < (await tabs.count()); index += 1) {
+      const box = await tabs.nth(index).boundingBox();
+      expect(box).not.toBeNull();
+      expect(box?.x ?? 0).toBeGreaterThanOrEqual((panel?.x ?? 0) - 1);
+      expect((box?.x ?? 0) + (box?.width ?? 0))
+        .toBeLessThanOrEqual((panel?.x ?? 0) + (panel?.width ?? 0) + 1);
+    }
+  });
+
+  test("multiplies two matrices", async ({ page }) => {
+    await page.locator('[data-tab="matrix"]').click();
+
+    const fill = async (name: string, grid: number[][]) => {
+      for (const [row, values] of grid.entries()) {
+        for (const [column, value] of values.entries()) {
+          await page
+            .locator(`[data-matrix-cell="${name}"][data-matrix-row="${row}"][data-matrix-column="${column}"]`)
+            .fill(String(value));
+        }
+      }
+    };
+    await fill("A", [[1, 2], [3, 4]]);
+    await fill("B", [[5, 6], [7, 8]]);
+    await page.locator('[data-matrix-do="multiply"]').click();
+
+    const cells = page.locator("[data-matrix-result] td");
+    await expect(cells).toHaveText(["19", "22", "43", "50"]);
+  });
+
+  test("says why a matrix has no inverse", async ({ page }) => {
+    await page.locator('[data-tab="matrix"]').click();
+    // The second row is twice the first, so there is no inverse to find.
+    await page.locator('[data-matrix-cell="A"][data-matrix-row="0"][data-matrix-column="0"]').fill("1");
+    await page.locator('[data-matrix-cell="A"][data-matrix-row="0"][data-matrix-column="1"]').fill("2");
+    await page.locator('[data-matrix-cell="A"][data-matrix-row="1"][data-matrix-column="0"]').fill("2");
+    await page.locator('[data-matrix-cell="A"][data-matrix-row="1"][data-matrix-column="1"]').fill("4");
+
+    await page.locator('[data-matrix-do="inverse-A"]').click();
+    await expect(page.locator("[data-matrix-error]")).toContainText("singular");
+  });
+
+  test("keeps typing in a matrix cell from losing the caret", async ({ page }) => {
+    await page.locator('[data-tab="matrix"]').click();
+    const cell = page.locator('[data-matrix-cell="A"][data-matrix-row="0"][data-matrix-column="0"]');
+
+    // Typed key by key, as a person does: a grid rebuilt on each keystroke
+    // would replace this element and drop the rest of the number on the floor.
+    await cell.click();
+    await page.keyboard.press("Control+a");
+    await page.keyboard.type("123");
+    await expect(cell).toHaveValue("123");
+    await expect(cell).toBeFocused();
+  });
+
+  test("keeps the matrices across a reload", async ({ page }) => {
+    await page.locator('[data-tab="matrix"]').click();
+    await page.locator('[data-matrix-cell="B"][data-matrix-row="1"][data-matrix-column="1"]').fill("9");
+
+    await page.reload();
+    await page.locator('[data-tab="matrix"]').click();
+    await expect(
+      page.locator('[data-matrix-cell="B"][data-matrix-row="1"][data-matrix-column="1"]')
+    ).toHaveValue("9");
+  });
+
   test("typing in the graph input does not drive the keypad", async ({ page }) => {
     await page.locator('[data-graph-input="0"]').fill("x+5");
     await expect(expression(page)).toHaveText("");

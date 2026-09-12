@@ -24,6 +24,8 @@ ts/
   function-series.ts  the four Y expressions, shared by the graph and table
   stats.ts            one-variable figures and least-squares regression
   stat-lists.ts       the two lists behind the Stats tab
+  matrix.ts           matrix arithmetic: determinant, inverse, the rest
+  matrices.ts         the two grids behind the Matrix tab
   storage.ts          localStorage, guarded
   theme.ts            light/dark
   index.ts            composition root: builds the parts and wires them
@@ -31,10 +33,11 @@ ts/
     keypad.ts         the action registry, the 2nd layer, the keyboard
     display.ts        the expression and result lines
     history-panel.ts  |
-    register-panel.ts |  the five side-panel tabs
+    register-panel.ts |  the six side-panel tabs
     graph-panel.ts    |
     table-panel.ts    |
     stats-panel.ts    |
+    matrix-panel.ts   |
   *.test.ts           unit tests
   types/              one type alias per file
   interfaces/         one interface per file
@@ -181,12 +184,47 @@ An intercept that is only the residue of a cancellation is reported as `0`:
 data lying exactly on `y = 2.1x` leaves `-8.9e-16` behind, which is the float's
 error bar rather than an intercept.
 
+**Matrices.** The Matrix tab holds two grids, A and B, up to 4×4, with the
+operations that need more than one of them (`A+B`, `A−B`, `A×B`) and the ones
+that need only one (transpose, determinant, inverse). Changing the size keeps
+whatever still fits, so growing a matrix does not clear what has been typed.
+The answer follows the grids: edit a cell and the determinant on screen is the
+determinant of what is now in the grid, not of what was there when the button
+was pressed.
+
+Matrices stay out of the expression engine — there is nowhere in `2 + 3` for a
+grid to go — so everything happens in the panel and the answer is shown there.
+
+An operation that cannot be done says why: matrices of different sizes cannot
+be added, `A×B` needs A as wide as B is tall, only a square matrix has a
+determinant or an inverse, and a singular one has no inverse at all. Producing
+a grid full of infinities would be worse than saying so.
+
+The determinant uses fraction-free (Bareiss) elimination rather than ordinary
+LU, because every division it performs comes out exact: a matrix of whole
+numbers gives a whole number back, so a determinant of 6 is `6` and not
+`5.999999999999998`. Whole answers are printed whole however long they are —
+a determinant of `-137266786` is the exact answer, and rounding it to eight
+digits on the way to the screen would throw away what the algorithm was chosen
+to protect.
+
+The inverse uses Gauss-Jordan with partial pivoting, and the threshold for
+"this pivot is zero" is relative to the pivot's own row. An absolute one would
+call a matrix of millionths singular; one measured against the largest entry
+anywhere would refuse `[[1e12, 0], [0, 1]]`, whose inverse is exactly
+representable and whose determinant the same module reports as `1e12`.
+
+Changing a size takes effect when the field settles rather than on each
+keystroke, because typing `12` passes through `1` — and resizing a 4-row
+matrix down to one row on the way would throw three rows away that growing
+back cannot recover.
+
 **Repeat equals.** `5 + 3 =` gives 8; press `=` again for 11, and again for 14.
 
 **Themes.** Light and dark, toggled in the header and remembered.
 
-**Everything persists.** History, memory, the statistics lists and the theme
-survive a reload via
+**Everything persists.** History, memory, the statistics lists, the matrices
+and the theme survive a reload via
 `localStorage`, guarded so a private window or a full quota degrades to "no
 saved state" rather than breaking.
 
@@ -303,7 +341,7 @@ the operands are left alone so `DEL` can fix the entry.
 the button wiring opt into jsdom per file.
 
 ```bash
-npm test             # 889 unit tests
+npm test             # 964 unit tests
 npm run test:watch
 npm run coverage     # with thresholds
 npm run test:e2e     # Playwright, real browser, desktop + mobile

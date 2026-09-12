@@ -9,6 +9,8 @@ import { setupGraphPanel } from "@/ui/graph-panel.ts";
 import { setupTablePanel } from "@/ui/table-panel.ts";
 import { setupStatsPanel } from "@/ui/stats-panel.ts";
 import { StatLists } from "@/stat-lists.ts";
+import { setupMatrixPanel } from "@/ui/matrix-panel.ts";
+import { MatrixStore } from "@/matrices.ts";
 import { FunctionSeries, SERIES_COUNT } from "@/function-series.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
@@ -41,6 +43,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   // Declared up here because persist() writes it out, and a const used before
   // its line would be a crash waiting for someone to move a call.
   const lists = new StatLists(saved.lists ?? []);
+  const matrices = new MatrixStore(saved.matrices ?? {});
 
   let theme: Theme = saved.theme ?? preferredTheme();
   const themeIcon = root.querySelector<HTMLElement>("[data-theme-icon]");
@@ -60,6 +63,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
       entries: calculator.entries,
       registers: calculator.registers,
       lists: lists.rows(),
+      matrices: { A: matrices.get("A"), B: matrices.get("B") },
     });
   };
 
@@ -202,11 +206,15 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   // No redraw here: the lists can only be edited from the Stats tab, so the
   // graph is never on screen when they change, and showing it renders it.
   lists.onChange(persist, signal);
+  matrices.onChange(persist, signal);
+
+  const matrixPanel = setupMatrixPanel(root, doc, signal, matrices);
 
   const onShow: Record<string, () => void> = {
     graph: graph.render,
     table: table.render,
     stats: stats.render,
+    matrix: matrixPanel.render,
   };
 
   /** Show one tab's panel and hide the rest. */

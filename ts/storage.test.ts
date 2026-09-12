@@ -1,5 +1,24 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { loadState, saveState, clearState } from "@/storage.ts";
+import type { PersistedState } from "@/interfaces/persisted-state.ts";
+
+/**
+ * A complete state, for tests that care about one field of it.
+ *
+ * Spelled out in one place so that adding a field to PersistedState is one
+ * edit here rather than a compile error in every fixture below.
+ */
+const EMPTY: PersistedState = {
+  history: [],
+  memory: 0,
+  theme: "light",
+  angleMode: "rad",
+  lastAnswer: null,
+  entries: [],
+  registers: {},
+  lists: [],
+  matrices: {},
+};
 
 /** A minimal in-memory Storage, so these tests need no browser. */
 function memoryStorage(initial: Record<string, string> = {}): Storage {
@@ -45,6 +64,7 @@ describe("storage", () => {
         entries: ["1+1"],
         registers: { A: 12 },
         lists: [{ L1: 1, L2: 2 }],
+        matrices: { A: [[1, 2], [3, 4]] },
       },
       storage
     );
@@ -57,12 +77,13 @@ describe("storage", () => {
       entries: ["1+1"],
       registers: { A: 12 },
       lists: [{ L1: 1, L2: 2 }],
+      matrices: { A: [[1, 2], [3, 4]] },
     });
   });
 
   it("round-trips a null last answer", () => {
     saveState(
-      { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {}, lists: [] },
+      EMPTY,
       storage
     );
     expect(loadState(storage).lastAnswer).toBeNull();
@@ -74,7 +95,7 @@ describe("storage", () => {
 
   it("clears", () => {
     saveState(
-      { history: [], memory: 1, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {}, lists: [] },
+      { ...EMPTY, memory: 1 },
       storage
     );
     clearState(storage);
@@ -106,6 +127,21 @@ describe("storage", () => {
       const raw = JSON.stringify({ lists: [{ L1: "Infinity", L2: 3 }] });
       expect(loadState(memoryStorage({ "calculator-fun.state": raw })).lists)
         .toEqual([{ L1: null, L2: 3 }]);
+    });
+
+    it("reads a broken matrix cell as a zero", () => {
+      const raw = JSON.stringify({
+        matrices: { A: [[1, "two"], [3, 4]], B: "not a grid" },
+      });
+      const loaded = loadState(memoryStorage({ "calculator-fun.state": raw }));
+      expect(loaded.matrices?.A).toEqual([[1, 0], [3, 4]]);
+      expect(loaded.matrices?.B).toBeUndefined();
+    });
+
+    it("drops matrix rows that are not rows", () => {
+      const raw = JSON.stringify({ matrices: { A: [[1, 2], 42, [3, 4]] } });
+      expect(loadState(memoryStorage({ "calculator-fun.state": raw })).matrices?.A)
+        .toEqual([[1, 2], [3, 4]]);
     });
 
     it("drops history entries of the wrong shape", () => {
@@ -157,7 +193,7 @@ describe("storage", () => {
     it("saves without throwing", () => {
       expect(() =>
         saveState(
-          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {}, lists: [] },
+          EMPTY,
           hostileStorage()
         )
       ).not.toThrow();
@@ -171,7 +207,7 @@ describe("storage", () => {
       expect(loadState(null)).toEqual({});
       expect(() =>
         saveState(
-          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {}, lists: [] },
+          EMPTY,
           null
         )
       ).not.toThrow();

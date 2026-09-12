@@ -4,6 +4,8 @@ import type { Theme } from "@/types/theme.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 import type { RegisterName } from "@/types/register-name.ts";
 import type { StatRow } from "@/interfaces/stat-row.ts";
+import type { Matrix } from "@/types/matrix.ts";
+import type { MatrixName } from "@/types/matrix-name.ts";
 
 const STORAGE_KEY = "calculator-fun.state";
 
@@ -46,6 +48,7 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
       entries?: string[];
       registers?: Partial<Record<RegisterName, number>>;
       lists?: StatRow[];
+      matrices?: Partial<Record<MatrixName, Matrix>>;
     } = {};
 
     if (Array.isArray(record["history"])) {
@@ -101,6 +104,26 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
         .filter((row): row is Record<string, unknown> =>
           typeof row === "object" && row !== null)
         .map((row) => ({ L1: cell(row["L1"]), L2: cell(row["L2"]) }));
+    }
+    const grids = record["matrices"];
+    if (typeof grids === "object" && grids !== null) {
+      // A grid is rows of numbers. Anything else -- a ragged array, a string
+      // where a number should be -- reads as a zero in that cell rather than
+      // taking the matrix down with it.
+      const matrices: Partial<Record<MatrixName, Matrix>> = {};
+      for (const name of ["A", "B"] as const) {
+        const grid = (grids as Record<string, unknown>)[name];
+        if (!Array.isArray(grid)) continue;
+
+        matrices[name] = grid
+          .filter((row): row is unknown[] => Array.isArray(row))
+          .map((row) =>
+            row.map((value) =>
+              typeof value === "number" && Number.isFinite(value) ? value : 0
+            )
+          );
+      }
+      state.matrices = matrices;
     }
     if (Array.isArray(record["entries"])) {
       state.entries = record["entries"].filter(

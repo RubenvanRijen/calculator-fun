@@ -3,6 +3,8 @@ import type { Theme } from "@/types/theme.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 import type { RegisterName } from "@/types/register-name.ts";
 import type { StatRow } from "@/interfaces/stat-row.ts";
+import type { Matrix } from "@/types/matrix.ts";
+import type { MatrixName } from "@/types/matrix-name.ts";
 
 /** Everything that survives a page reload. */
 export interface PersistedState {
@@ -18,4 +20,6 @@ export interface PersistedState {
   readonly registers: Readonly<Partial<Record<RegisterName, number>>>;
   /** The rows of the statistics lists. */
   readonly lists: readonly StatRow[];
+  /** The two matrices, A and B. */
+  readonly matrices: Readonly<Partial<Record<MatrixName, Matrix>>>;
 }

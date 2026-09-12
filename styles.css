@@ -277,15 +277,18 @@ body {
     color: var(--panel-text);
 }
 
+/* Six tabs no longer fit on one line of a 280px panel, and the last of them
+   was being cut off the edge. They wrap instead. */
 .tabs {
     display: flex;
+    flex-wrap: wrap;
 }
 
 .tab {
     cursor: pointer;
-    flex: 1;
-    padding: 10px 8px;
-    font-size: .9rem;
+    flex: 1 0 auto;
+    padding: 10px 5px;
+    font-size: .82rem;
     color: var(--muted);
     background: transparent;
     border: none;
@@ -584,6 +587,55 @@ body {
 .cell-input:focus {
     border-bottom-color: var(--accent);
     outline: none;
+}
+
+.matrix-editor {
+    margin-top: 10px;
+}
+
+.matrix-head {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+}
+
+.matrix-name {
+    color: var(--accent);
+    font-size: .95rem;
+    font-weight: 600;
+}
+
+/* One cell per column, so the grid keeps the shape of the matrix it holds. */
+.matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--columns, 2), minmax(0, 3.6em));
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.matrix-cell {
+    border: 1px solid var(--chip);
+    border-radius: 4px;
+    min-width: 0;
+    padding: 3px 4px;
+    text-align: center;
+}
+
+.size-input {
+    width: 3.5em;
+}
+
+.matrix-answer {
+    margin-top: 10px;
+}
+
+.matrix-result {
+    width: auto;
+}
+
+.matrix-result td {
+    border: 1px solid var(--chip);
+    text-align: right;
 }
 
 .fit-line {
