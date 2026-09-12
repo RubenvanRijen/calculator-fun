@@ -435,20 +435,19 @@ test.describe("graph", () => {
     await expect(page.locator("[data-graph-svg] line.plot-axis")).toHaveCount(2);
   });
 
-  test("plots an example when its chip is clicked", async ({ page }) => {
-    await page.locator('[data-graph-example="sin(x)"]').click();
-    await expect(page.locator("[data-graph-input]")).toHaveValue("sin(x)");
-    await expect(page.locator("[data-graph-svg] path.plot-line")).toHaveCount(1);
+  test("plots a second function in its own colour", async ({ page }) => {
+    await page.locator('[data-graph-input="1"]').fill("x");
+    await expect(page.locator('[data-graph-svg] path[data-series="1"]')).toHaveCount(1);
   });
 
   test("breaks a discontinuous function into several curves", async ({ page }) => {
-    await page.locator('[data-graph-example="1/x"]').click();
+    await page.locator('[data-graph-input="0"]').fill("1/x");
     const paths = page.locator("[data-graph-svg] path.plot-line");
     expect(await paths.count()).toBeGreaterThanOrEqual(2);
   });
 
   test("reports an unparseable expression", async ({ page }) => {
-    await page.locator("[data-graph-input]").fill("x^^2");
+    await page.locator('[data-graph-input="0"]').fill("x^^2");
     await expect(page.locator("[data-graph-error]")).toBeVisible();
   });
 
@@ -461,12 +460,50 @@ test.describe("graph", () => {
     if (!box) return;
 
     await page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2);
-    await expect(page.locator("[data-graph-readout]")).toContainText("ƒ(x) =");
+    // The readout names which series is being traced, now there can be four.
+    await expect(page.locator("[data-graph-readout]")).toContainText("Y1");
+    await expect(page.locator("[data-graph-readout]")).toContainText("y =");
     await expect(page.locator("[data-graph-marker]")).toHaveAttribute("visibility", "visible");
   });
 
+  test("zooms and resets the range", async ({ page }) => {
+    await page.locator('[data-graph-zoom="in"]').click();
+    await expect(page.locator("[data-graph-min]")).toHaveValue("-5");
+    await page.locator('[data-graph-zoom="reset"]').click();
+    await expect(page.locator("[data-graph-min]")).toHaveValue("-10");
+  });
+
+  test("traces with the on-screen arrows", async ({ page }) => {
+    await page.locator('[data-graph-step="1"]').click();
+    await expect(page.locator("[data-graph-readout]")).toContainText("Y1");
+    await expect(page.locator("[data-graph-marker]")).toHaveAttribute("visibility", "visible");
+  });
+
+  test("finds a root of the default curve", async ({ page }) => {
+    // Y1 is x^2-2, whose roots are the square roots of two.
+    await page.locator('[data-graph-find="root"]').click();
+    await expect(page.locator("[data-graph-readout]")).toContainText("1.414");
+  });
+
+  test("finds the vertex", async ({ page }) => {
+    await page.locator('[data-graph-find="min"]').click();
+    await expect(page.locator("[data-graph-readout]")).toContainText("x = 0");
+    await expect(page.locator("[data-graph-readout]")).toContainText("y = -2");
+  });
+
+  test("finds where two curves cross", async ({ page }) => {
+    await page.locator('[data-graph-input="1"]').fill("x");
+    await page.locator('[data-graph-find="intersect"]').click();
+    await expect(page.locator("[data-graph-readout]")).toContainText("x = -1");
+  });
+
+  test("names the field an error came from", async ({ page }) => {
+    await page.locator('[data-graph-input="1"]').fill("wobble(x)");
+    await expect(page.locator("[data-graph-error]")).toContainText("Y2:");
+  });
+
   test("typing in the graph input does not drive the keypad", async ({ page }) => {
-    await page.locator("[data-graph-input]").fill("x+5");
+    await page.locator('[data-graph-input="0"]').fill("x+5");
     await expect(expression(page)).toHaveText("");
   });
 });

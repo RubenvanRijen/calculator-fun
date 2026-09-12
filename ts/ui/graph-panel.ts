@@ -1,13 +1,20 @@
-import { plot } from "@/graph.ts";
-import type { PlotResult } from "@/interfaces/plot-result.ts";
+import { plotAll } from "@/graph.ts";
+import { findExtremum, findIntersection, findRoot } from "@/analysis.ts";
+import { toRpn, tokenize, evaluateRpn } from "@/expression.ts";
+import type { MultiPlotResult } from "@/interfaces/multi-plot-result.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
+import type { Curve } from "@/types/curve.ts";
+import type { ExtremumKind } from "@/types/extremum-kind.ts";
 
 /** The SVG user-space the plot is drawn in. */
 const PLOT_WIDTH = 280;
 const PLOT_HEIGHT = 200;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-/** Short, readable numbers for the trace readout. */
+/** How far one press of the trace arrows moves, as a share of the range. */
+const TRACE_STEP = 1 / 60;
+
+/** Short, readable numbers for the readout. */
 function trim(value: number): string {
   return parseFloat(value.toPrecision(4)).toString();
 }
@@ -24,9 +31,8 @@ function readNumber(input: HTMLInputElement | null, fallback: number): number {
 }
 
 /**
- * The ƒ(x) tab: an expression field, a range, and an inline SVG plot with a
- * hover readout. Owns nothing but its own elements, so the composition root
- * only has to hand it a place to look and tell it when to redraw.
+ * The ƒ(x) tab: up to four functions, a range that can be zoomed, a trace that
+ * walks along a curve, and searches for roots, turning points and crossings.
  */
 export function setupGraphPanel(
   root: Document | HTMLElement,
@@ -38,15 +44,44 @@ export function setupGraphPanel(
   const query = <T extends HTMLElement>(selector: string): T | null =>
     root.querySelector<T>(selector);
 
-  const input = query<HTMLInputElement>("[data-graph-input]");
+  const inputs = [0, 1, 2, 3].map((index) =>
+    query<HTMLInputElement>(`[data-graph-input="${index}"]`)
+  );
   const minInput = query<HTMLInputElement>("[data-graph-min]");
   const maxInput = query<HTMLInputElement>("[data-graph-max]");
   const svg = root.querySelector<SVGSVGElement>("[data-graph-svg]");
   const errorElement = query("[data-graph-error]");
   const readout = query("[data-graph-readout]");
 
-  let lastPlot: PlotResult | null = null;
-  let lastRange = { xMin: -10, xMax: 10 };
+  let plotted: MultiPlotResult | null = null;
+  let range = { xMin: -10, xMax: 10 };
+  /**
+   * Which series the trace is following, and where along it.
+   *
+   * `known` is carried so a redraw does not undo a search: a root's y is zero,
+   * and re-evaluating the curve there would put the float residual back.
+   */
+  let traced: { series: number; x: number; known: number | undefined } | null = null;
+
+  const expressions = (): string[] => inputs.map((input) => input?.value.trim() ?? "");
+
+  /** The indexes of the series that actually have something drawn. */
+  const drawn = (): number[] =>
+    (plotted?.series ?? [])
+      .map((result, index) => (result.segments.length > 0 ? index : -1))
+      .filter((index) => index !== -1);
+
+  /** A plain function of x for one series, for the numeric searches. */
+  function curveFor(index: number): Curve | null {
+    const expression = expressions()[index] ?? "";
+    if (expression === "") return null;
+    try {
+      const rpn = toRpn(tokenize(expression));
+      return (x) => evaluateRpn(rpn, { ...contextOf(), angleMode: "rad", x });
+    } catch {
+      return null;
+    }
+  }
 
   function line(x1: number, y1: number, x2: number, y2: number): SVGElement {
     const element = doc.createElementNS(SVG_NS, "line");
@@ -58,50 +93,61 @@ export function setupGraphPanel(
     return element;
   }
 
+  const toScreenX = (x: number): number =>
+    ((x - range.xMin) / (range.xMax - range.xMin)) * PLOT_WIDTH;
+
+  const toScreenY = (y: number): number => {
+    if (plotted === null) return PLOT_HEIGHT / 2;
+    const span = plotted.yMax - plotted.yMin;
+    return PLOT_HEIGHT - ((y - plotted.yMin) / span) * PLOT_HEIGHT;
+  };
+
   function render(): void {
     if (!svg) return;
 
-    const expression = input?.value ?? "";
-    const xMin = readNumber(minInput, -10);
-    const xMax = readNumber(maxInput, 10);
-    const result = plot(expression, xMin, xMax, undefined, contextOf());
+    range = { xMin: readNumber(minInput, -10), xMax: readNumber(maxInput, 10) };
+    plotted = plotAll(expressions(), range.xMin, range.xMax, undefined, contextOf());
 
-    lastPlot = result;
-    lastRange = { xMin, xMax };
-
+    // Report the first thing that went wrong, naming which field it was in --
+    // except a bad range, which every series reports and none of them caused.
+    const badRange = range.xMax <= range.xMin;
+    const failed = plotted.series.findIndex((result) => result.error !== null);
     if (errorElement) {
-      errorElement.textContent = result.error ?? "";
-      errorElement.hidden = result.error === null;
+      let problem: string | null = null;
+      if (badRange) problem = "x-max must be greater than x-min";
+      else if (failed !== -1) {
+        const reason = plotted.series[failed]?.error ?? null;
+        problem = reason === null ? null : `Y${failed + 1}: ${reason}`;
+      }
+      errorElement.textContent = problem ?? "";
+      errorElement.hidden = problem === null;
     }
 
     svg.replaceChildren();
 
-    const toScreenX = (x: number): number =>
-      ((x - xMin) / (xMax - xMin)) * PLOT_WIDTH;
-    const toScreenY = (y: number): number =>
-      PLOT_HEIGHT - ((y - result.yMin) / (result.yMax - result.yMin)) * PLOT_HEIGHT;
-
-    // Axes, drawn only where they fall inside the visible range.
-    if (xMin < 0 && xMax > 0) {
+    if (range.xMin < 0 && range.xMax > 0) {
       svg.append(line(toScreenX(0), 0, toScreenX(0), PLOT_HEIGHT));
     }
-    if (result.yMin < 0 && result.yMax > 0) {
+    if (plotted.yMin < 0 && plotted.yMax > 0) {
       svg.append(line(0, toScreenY(0), PLOT_WIDTH, toScreenY(0)));
     }
 
-    for (const segment of result.segments) {
-      const path = doc.createElementNS(SVG_NS, "path");
-      path.setAttribute(
-        "d",
-        segment
-          .map((point, index) =>
-            `${index === 0 ? "M" : "L"}${toScreenX(point.x).toFixed(2)} ${toScreenY(point.y).toFixed(2)}`
-          )
-          .join(" ")
-      );
-      path.setAttribute("class", "plot-line");
-      svg.append(path);
-    }
+    plotted.series.forEach((result, index) => {
+      for (const segment of result.segments) {
+        const path = doc.createElementNS(SVG_NS, "path");
+        path.setAttribute(
+          "d",
+          segment
+            .map((point, at) =>
+              `${at === 0 ? "M" : "L"}${toScreenX(point.x).toFixed(2)} ${toScreenY(point.y).toFixed(2)}`
+            )
+            .join(" ")
+        );
+        path.setAttribute("class", "plot-line");
+        path.setAttribute("data-series", String(index));
+        svg.append(path);
+      }
+    });
 
     const marker = doc.createElementNS(SVG_NS, "circle");
     marker.setAttribute("r", "3.5");
@@ -110,82 +156,182 @@ export function setupGraphPanel(
     marker.setAttribute("visibility", "hidden");
     svg.append(marker);
 
+    // A trace already running should survive a redraw -- but only while it is
+    // still on screen. Replaying one from the old window would leave the
+    // readout describing a point outside the new one.
+    if (traced !== null && traced.x >= range.xMin && traced.x <= range.xMax) {
+      showTrace(traced.series, traced.x, traced.known);
+    } else {
+      clearTrace();
+    }
+  }
+
+  /** Take the marker off the curve and say nothing, rather than something stale. */
+  function clearTrace(): void {
+    traced = null;
+    svg?.querySelector("[data-graph-marker]")?.setAttribute("visibility", "hidden");
     if (readout) readout.textContent = "";
   }
 
-  function traceAt(ratio: number): void {
-    if (!svg || !lastPlot || lastPlot.segments.length === 0) return;
+  /**
+   * Put the marker on `series` at `x`, and say where it is.
+   *
+   * `known` is the y a search already established. A root's y is zero by
+   * definition, so re-evaluating the curve there would replace the answer with
+   * whatever float dust the evaluation happens to leave behind.
+   */
+  function showTrace(series: number, x: number, known?: number): void {
+    const curve = curveFor(series);
+    if (!svg || curve === null) return clearTrace();
 
-    const { xMin, xMax } = lastRange;
-    const x = xMin + ratio * (xMax - xMin);
-
-    // Find the sampled point nearest the pointer.
-    let nearest = null;
-    let bestDistance = Infinity;
-    for (const segment of lastPlot.segments) {
-      for (const point of segment) {
-        const distance = Math.abs(point.x - x);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          nearest = point;
-        }
+    let y: number;
+    if (known !== undefined) {
+      y = known;
+    } else {
+      try {
+        y = curve(x);
+      } catch {
+        return clearTrace();
       }
     }
-    if (!nearest) return;
+    if (!Number.isFinite(y)) return clearTrace();
+
+    traced = { series, x, known };
 
     const marker = svg.querySelector("[data-graph-marker]");
     if (marker) {
-      marker.setAttribute(
-        "cx",
-        (((nearest.x - xMin) / (xMax - xMin)) * PLOT_WIDTH).toFixed(2)
-      );
-      marker.setAttribute(
-        "cy",
-        (
-          PLOT_HEIGHT -
-          ((nearest.y - lastPlot.yMin) / (lastPlot.yMax - lastPlot.yMin)) * PLOT_HEIGHT
-        ).toFixed(2)
-      );
+      marker.setAttribute("cx", toScreenX(x).toFixed(2));
+      marker.setAttribute("cy", toScreenY(y).toFixed(2));
       marker.setAttribute("visibility", "visible");
+      marker.setAttribute("data-series", String(series));
     }
     if (readout) {
-      readout.textContent = `x = ${trim(nearest.x)}   ƒ(x) = ${trim(nearest.y)}`;
+      readout.textContent = `Y${series + 1}   x = ${trim(x)}   y = ${trim(y)}`;
     }
   }
 
-  // pointermove covers mouse, pen and a finger dragged across the plot.
-  svg?.addEventListener(
-    "pointermove",
-    (event) => {
-      const bounds = svg.getBoundingClientRect();
-      if (bounds.width === 0) return;
-      traceAt((event.clientX - bounds.left) / bounds.width);
-    },
-    { signal }
-  );
-  svg?.addEventListener(
-    "pointerleave",
-    () => {
-      svg.querySelector("[data-graph-marker]")?.setAttribute("visibility", "hidden");
-      if (readout) readout.textContent = "";
-    },
-    { signal }
-  );
+  /** The series nearest a point, so hovering follows whichever curve is there. */
+  function nearestSeries(x: number, y: number): number | null {
+    let best: number | null = null;
+    let bestDistance = Infinity;
 
-  for (const field of [input, minInput, maxInput]) {
-    field?.addEventListener("input", render, { signal });
+    for (const index of drawn()) {
+      const curve = curveFor(index);
+      if (curve === null) continue;
+      try {
+        const value = curve(x);
+        if (!Number.isFinite(value)) continue;
+        const distance = Math.abs(value - y);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = index;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return best;
   }
 
-  for (const chip of root.querySelectorAll<HTMLElement>("[data-graph-example]")) {
-    chip.addEventListener(
-      "click",
-      () => {
-        if (input) input.value = chip.dataset["graphExample"] ?? "";
-        render();
-      },
-      { signal }
-    );
+  function scaleRange(factor: number): void {
+    const centre = (range.xMin + range.xMax) / 2;
+    const half = ((range.xMax - range.xMin) / 2) * factor;
+    if (minInput) minInput.value = String(parseFloat((centre - half).toPrecision(6)));
+    if (maxInput) maxInput.value = String(parseFloat((centre + half).toPrecision(6)));
+    render();
   }
+
+  function step(direction: number): void {
+    const series = traced?.series ?? drawn()[0];
+    if (series === undefined) return;
+    const from = traced?.x ?? (range.xMin + range.xMax) / 2;
+    const next = from + direction * (range.xMax - range.xMin) * TRACE_STEP;
+    showTrace(series, Math.min(Math.max(next, range.xMin), range.xMax));
+  }
+
+  /** Run one of the numeric searches and put the marker on what it found. */
+  function find(what: string): void {
+    const visible = drawn();
+    const series = traced?.series ?? visible[0];
+    const curve = series === undefined ? null : curveFor(series);
+    if (series === undefined || curve === null) {
+      if (readout) readout.textContent = "Nothing to search";
+      return;
+    }
+
+    let found = null;
+    if (what === "root") {
+      found = findRoot(curve, range.xMin, range.xMax);
+    } else if (what === "min" || what === "max") {
+      found = findExtremum(curve, range.xMin, range.xMax, what as ExtremumKind);
+    } else if (what === "intersect") {
+      const other = visible.find((index) => index !== series);
+      const otherCurve = other === undefined ? null : curveFor(other);
+      if (otherCurve === null) {
+        if (readout) readout.textContent = "Intersect needs two curves";
+        return;
+      }
+      found = findIntersection(curve, otherCurve, range.xMin, range.xMax);
+    }
+
+    if (found === null) {
+      if (readout) readout.textContent = `No ${what} in this range`;
+      return;
+    }
+    showTrace(series, found.x, found.y);
+  }
+
+  // --- wiring ---------------------------------------------------------------
+  for (const input of inputs) {
+    input?.addEventListener("input", () => {
+      traced = null;
+      render();
+    }, { signal });
+  }
+  for (const input of [minInput, maxInput]) {
+    input?.addEventListener("input", render, { signal });
+  }
+
+  svg?.addEventListener("pointermove", (event) => {
+    const bounds = svg.getBoundingClientRect();
+    // A collapsed box divides by zero below. Both ratios go to Infinity and
+    // the hover ends up doing nothing anyway; this just says so up front.
+    if (bounds.width === 0 || bounds.height === 0 || plotted === null) return;
+
+    const ratio = (event.clientX - bounds.left) / bounds.width;
+    const x = range.xMin + ratio * (range.xMax - range.xMin);
+    const yRatio = (event.clientY - bounds.top) / bounds.height;
+    const y = plotted.yMax - yRatio * (plotted.yMax - plotted.yMin);
+
+    const series = nearestSeries(x, y);
+    if (series !== null) showTrace(series, x);
+  }, { signal });
+
+  svg?.addEventListener("pointerleave", clearTrace, { signal });
+
+  root.addEventListener("click", (event) => {
+    const button = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-graph-zoom], [data-graph-step], [data-graph-find]")
+      : null;
+    if (button === null) return;
+
+    const zoom = button.dataset["graphZoom"];
+    if (zoom === "in") scaleRange(0.5);
+    else if (zoom === "out") scaleRange(2);
+    else if (zoom === "reset") {
+      if (minInput) minInput.value = "-10";
+      if (maxInput) maxInput.value = "10";
+      traced = null;
+      render();
+    }
+
+    const stepBy = button.dataset["graphStep"];
+    if (stepBy !== undefined) step(Number(stepBy));
+
+    const what = button.dataset["graphFind"];
+    if (what !== undefined) find(what);
+  }, { signal });
 
   return { render };
 }

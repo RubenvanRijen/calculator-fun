@@ -43,6 +43,7 @@ describe("storage", () => {
         angleMode: "deg",
         lastAnswer: 35,
         entries: ["1+1"],
+        registers: { A: 12 },
       },
       storage
     );
@@ -53,12 +54,13 @@ describe("storage", () => {
       angleMode: "deg",
       lastAnswer: 35,
       entries: ["1+1"],
+      registers: { A: 12 },
     });
   });
 
   it("round-trips a null last answer", () => {
     saveState(
-      { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [] },
+      { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {} },
       storage
     );
     expect(loadState(storage).lastAnswer).toBeNull();
@@ -70,7 +72,7 @@ describe("storage", () => {
 
   it("clears", () => {
     saveState(
-      { history: [], memory: 1, theme: "light", angleMode: "rad", lastAnswer: null, entries: [] },
+      { history: [], memory: 1, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {} },
       storage
     );
     clearState(storage);
@@ -135,7 +137,7 @@ describe("storage", () => {
     it("saves without throwing", () => {
       expect(() =>
         saveState(
-          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [] },
+          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {} },
           hostileStorage()
         )
       ).not.toThrow();
@@ -149,7 +151,7 @@ describe("storage", () => {
       expect(loadState(null)).toEqual({});
       expect(() =>
         saveState(
-          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [] },
+          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {} },
           null
         )
       ).not.toThrow();

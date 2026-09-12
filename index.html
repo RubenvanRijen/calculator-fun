@@ -106,11 +106,28 @@
             </section>
 
             <section data-panel="graph" class="panel-body" hidden>
-                <label class="field">
-                    <span class="field-label">ƒ(x) =</span>
-                    <input data-graph-input class="field-input" type="text" value="x^2-2"
-                        spellcheck="false" autocomplete="off">
-                </label>
+                <div class="series-list">
+                    <label class="field field-inline">
+                        <span class="field-label series-label" data-series-label="0">Y1</span>
+                        <input data-graph-input="0" class="field-input" type="text" value="x^2-2"
+                            spellcheck="false" autocomplete="off" aria-label="Function Y1">
+                    </label>
+                    <label class="field field-inline">
+                        <span class="field-label series-label" data-series-label="1">Y2</span>
+                        <input data-graph-input="1" class="field-input" type="text" value=""
+                            spellcheck="false" autocomplete="off" aria-label="Function Y2">
+                    </label>
+                    <label class="field field-inline">
+                        <span class="field-label series-label" data-series-label="2">Y3</span>
+                        <input data-graph-input="2" class="field-input" type="text" value=""
+                            spellcheck="false" autocomplete="off" aria-label="Function Y3">
+                    </label>
+                    <label class="field field-inline">
+                        <span class="field-label series-label" data-series-label="3">Y4</span>
+                        <input data-graph-input="3" class="field-input" type="text" value=""
+                            spellcheck="false" autocomplete="off" aria-label="Function Y4">
+                    </label>
+                </div>
 
                 <div class="range">
                     <label class="field field-inline">
@@ -124,21 +141,31 @@
                 </div>
 
                 <div class="examples">
-                    <button data-graph-example="x^2-2" class="chip" type="button">x²−2</button>
-                    <button data-graph-example="sin(x)" class="chip" type="button">sin x</button>
-                    <button data-graph-example="1/x" class="chip" type="button">1/x</button>
-                    <button data-graph-example="sqrt(x)" class="chip" type="button">√x</button>
-                    <button data-graph-example="tan(x)" class="chip" type="button">tan x</button>
+                    <button data-graph-zoom="in" class="chip" type="button">zoom +</button>
+                    <button data-graph-zoom="out" class="chip" type="button">zoom &minus;</button>
+                    <button data-graph-zoom="reset" class="chip" type="button">reset</button>
+                    <span class="chip-group">
+                        <button data-graph-step="-1" class="chip" type="button" aria-label="Trace left">&#x25C0;</button>
+                        <button data-graph-step="1" class="chip" type="button" aria-label="Trace right">&#x25B6;</button>
+                    </span>
+                </div>
+
+                <div class="examples">
+                    <button data-graph-find="root" class="chip" type="button">root</button>
+                    <button data-graph-find="min" class="chip" type="button">min</button>
+                    <button data-graph-find="max" class="chip" type="button">max</button>
+                    <button data-graph-find="intersect" class="chip" type="button">intersect</button>
                 </div>
 
                 <div class="plot-wrap">
                     <svg data-graph-svg class="plot" viewBox="0 0 280 200"
-                        preserveAspectRatio="none" role="img" aria-label="Plot of the function"></svg>
+                        preserveAspectRatio="none" role="img" aria-label="Plot of the functions"></svg>
                     <output data-graph-readout class="readout"></output>
                 </div>
 
                 <p data-graph-error class="error" role="alert" hidden></p>
             </section>
+
         </aside>
     </main>
 

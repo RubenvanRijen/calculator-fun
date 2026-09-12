@@ -119,7 +119,7 @@ describe("setupCalculator", () => {
         "[data-expression]", "[data-result]", "[data-error]",
         "[data-memory-indicator]", "[data-paren-indicator]",
         "[data-history-list]", "[data-history-clear]", "[data-tab]", "[data-panel]",
-        "[data-graph-input]", "[data-graph-svg]", "[data-graph-error]",
+        '[data-graph-input="0"]', "[data-graph-svg]", "[data-graph-error]",
         "[data-theme-toggle]", "[data-theme-icon]", "[data-keypad]",
       ]) {
         expect(root.querySelector(selector), selector).not.toBeNull();
@@ -449,7 +449,7 @@ describe("setupCalculator", () => {
     });
 
     it("does not hijack typing into the graph input", () => {
-      const input = root.querySelector<HTMLInputElement>("[data-graph-input]");
+      const input = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
       input?.focus();
       type("5");
       expect(expression()).toBe("");
@@ -619,7 +619,7 @@ describe("setupCalculator", () => {
 
     it("leaves the arrow keys alone while the graph field has focus", () => {
       press("1", "2");
-      root.querySelector<HTMLInputElement>("[data-graph-input]")?.focus();
+      root.querySelector<HTMLInputElement>('[data-graph-input="0"]')?.focus();
       type("ArrowLeft");
       type("9");
       expect(expression()).toBe("12");
@@ -785,7 +785,7 @@ describe("setupCalculator", () => {
     });
 
     it("redraws when the expression changes", () => {
-      const input = root.querySelector<HTMLInputElement>("[data-graph-input]");
+      const input = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
       const before = paths()[0]?.getAttribute("d");
       if (input) input.value = "x^3";
       input?.dispatchEvent(new Event("input", { bubbles: true }));
@@ -793,7 +793,7 @@ describe("setupCalculator", () => {
     });
 
     it("shows an error for an unparseable expression", () => {
-      const input = root.querySelector<HTMLInputElement>("[data-graph-input]");
+      const input = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
       if (input) input.value = "x^^2";
       input?.dispatchEvent(new Event("input", { bubbles: true }));
       const error = root.querySelector<HTMLElement>("[data-graph-error]");
@@ -802,17 +802,162 @@ describe("setupCalculator", () => {
     });
 
     it("breaks a discontinuous function into several paths", () => {
-      const input = root.querySelector<HTMLInputElement>("[data-graph-input]");
+      const input = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
       if (input) input.value = "1/x";
       input?.dispatchEvent(new Event("input", { bubbles: true }));
       expect(paths().length).toBeGreaterThanOrEqual(2);
     });
 
-    it("loads an example when its chip is clicked", () => {
-      button("sin x").click();
-      const input = root.querySelector<HTMLInputElement>("[data-graph-input]");
-      expect(input?.value).toBe("sin(x)");
-      expect(paths().length).toBeGreaterThan(0);
+    it("draws a second series in its own colour", () => {
+      const second = root.querySelector<HTMLInputElement>('[data-graph-input="1"]');
+      if (second) second.value = "x";
+      second?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      expect(paths().length).toBeGreaterThan(1);
+      expect(
+        [...(svg()?.querySelectorAll('path[data-series="1"]') ?? [])].length
+      ).toBeGreaterThan(0);
+    });
+
+    it("names the field an error came from", () => {
+      const second = root.querySelector<HTMLInputElement>('[data-graph-input="1"]');
+      if (second) second.value = "wobble(x)";
+      second?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      const error = root.querySelector<HTMLElement>("[data-graph-error]");
+      expect(error?.hidden).toBe(false);
+      expect(error?.textContent).toContain("Y2:");
+    });
+
+    it("zooms in and out around the centre", () => {
+      const min = root.querySelector<HTMLInputElement>("[data-graph-min]");
+      const max = root.querySelector<HTMLInputElement>("[data-graph-max]");
+
+      root.querySelector<HTMLElement>('[data-graph-zoom="in"]')?.click();
+      expect(Number(min?.value)).toBeCloseTo(-5);
+      expect(Number(max?.value)).toBeCloseTo(5);
+
+      root.querySelector<HTMLElement>('[data-graph-zoom="out"]')?.click();
+      expect(Number(min?.value)).toBeCloseTo(-10);
+
+      root.querySelector<HTMLElement>('[data-graph-zoom="in"]')?.click();
+      root.querySelector<HTMLElement>('[data-graph-zoom="reset"]')?.click();
+      expect(Number(min?.value)).toBe(-10);
+      expect(Number(max?.value)).toBe(10);
+    });
+
+    it("traces along the curve with the arrows", () => {
+      const readout = () => root.querySelector("[data-graph-readout]")?.textContent ?? "";
+      root.querySelector<HTMLElement>('[data-graph-step="1"]')?.click();
+      expect(readout()).toContain("Y1");
+      expect(readout()).toContain("x =");
+
+      const first = readout();
+      root.querySelector<HTMLElement>('[data-graph-step="1"]')?.click();
+      expect(readout()).not.toBe(first);
+    });
+
+    it("finds a root", () => {
+      // Y1 defaults to x^2-2, whose positive root is sqrt(2).
+      root.querySelector<HTMLElement>('[data-graph-find="root"]')?.click();
+      const readout = root.querySelector("[data-graph-readout]")?.textContent ?? "";
+      expect(readout).toMatch(/x = -?1\.414/);
+    });
+
+    it("finds a turning point", () => {
+      root.querySelector<HTMLElement>('[data-graph-find="min"]')?.click();
+      const readout = root.querySelector("[data-graph-readout]")?.textContent ?? "";
+      expect(readout).toContain("x = 0");
+      expect(readout).toContain("y = -2");
+    });
+
+    it("finds where two curves cross", () => {
+      const second = root.querySelector<HTMLInputElement>('[data-graph-input="1"]');
+      if (second) second.value = "x";
+      second?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      root.querySelector<HTMLElement>('[data-graph-find="intersect"]')?.click();
+      const readout = root.querySelector("[data-graph-readout]")?.textContent ?? "";
+      // x^2-2 meets x at -1 and at 2; the search reports the first in range.
+      expect(readout).toMatch(/x = -1\b/);
+      expect(readout).toMatch(/y = -1\b/);
+    });
+
+    it("keeps a root's y at zero across a redraw", () => {
+      const readout = () => root.querySelector("[data-graph-readout]")?.textContent ?? "";
+      root.querySelector<HTMLElement>('[data-graph-find="root"]')?.click();
+      expect(readout()).toContain("y = 0");
+
+      // Zooming redraws, and a redraw that re-evaluated the curve would put
+      // the float residual (-4.4e-16) back where the answer was.
+      root.querySelector<HTMLElement>('[data-graph-zoom="in"]')?.click();
+      expect(readout()).toContain("y = 0");
+    });
+
+    it("drops a trace that the new range no longer shows", () => {
+      const marker = () => root.querySelector("[data-graph-marker]");
+      const readout = () => root.querySelector("[data-graph-readout]")?.textContent ?? "";
+
+      // Step out to roughly x = 8.3, then halve the range to [-5, 5].
+      for (let press = 0; press < 25; press += 1) {
+        root.querySelector<HTMLElement>('[data-graph-step="1"]')?.click();
+      }
+      expect(readout()).toMatch(/x = [5-9]/);
+
+      root.querySelector<HTMLElement>('[data-graph-zoom="in"]')?.click();
+      expect(readout()).toBe("");
+      expect(marker()?.getAttribute("visibility")).toBe("hidden");
+    });
+
+    it("blames the range, not a field, when the range is backwards", () => {
+      const min = root.querySelector<HTMLInputElement>("[data-graph-min]");
+      const max = root.querySelector<HTMLInputElement>("[data-graph-max]");
+      if (min) min.value = "5";
+      if (max) max.value = "1";
+      max?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      const error = root.querySelector<HTMLElement>("[data-graph-error]");
+      expect(error?.hidden).toBe(false);
+      // Every series reports this one and none of them caused it, so naming
+      // Y1 would point at the wrong field.
+      expect(error?.textContent).not.toContain("Y1");
+      expect(error?.textContent).toContain("x-max must be greater than x-min");
+    });
+
+    it("marks the traced series on the marker", () => {
+      const second = root.querySelector<HTMLInputElement>('[data-graph-input="1"]');
+      if (second) second.value = "x";
+      second?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      root.querySelector<HTMLElement>('[data-graph-find="intersect"]')?.click();
+      const marker = root.querySelector("[data-graph-marker]");
+      expect(marker?.getAttribute("data-series")).toBe("0");
+    });
+
+    it("says so when there is nothing to search", () => {
+      const first = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
+      if (first) first.value = "";
+      first?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      root.querySelector<HTMLElement>('[data-graph-find="root"]')?.click();
+      expect(root.querySelector("[data-graph-readout]")?.textContent)
+        .toBe("Nothing to search");
+    });
+
+    it("says so when there is only one curve to intersect", () => {
+      root.querySelector<HTMLElement>('[data-graph-find="intersect"]')?.click();
+      expect(root.querySelector("[data-graph-readout]")?.textContent)
+        .toBe("Intersect needs two curves");
+    });
+
+    it("says so when there is no root in range", () => {
+      const first = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
+      if (first) first.value = "x^2+1";
+      first?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      root.querySelector<HTMLElement>('[data-graph-find="root"]')?.click();
+      expect(root.querySelector("[data-graph-readout]")?.textContent)
+        .toBe("No root in this range");
     });
 
     it("falls back to the default range when a bound is cleared", () => {

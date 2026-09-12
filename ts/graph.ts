@@ -3,6 +3,7 @@ import type { PlotPoint } from "@/interfaces/plot-point.ts";
 import type { PlotSegment } from "@/types/plot-segment.ts";
 import type { PlotResult } from "@/interfaces/plot-result.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
+import type { MultiPlotResult } from "@/interfaces/multi-plot-result.ts";
 
 /** How many points to sample across the visible range. */
 export const DEFAULT_SAMPLES = 400;
@@ -69,7 +70,9 @@ export function plot(
     }
   }
 
-  const limit = magnitudeLimit(sampled);
+  const limit = magnitudeLimit(
+    sampled.filter((point): point is PlotPoint => point !== null).map((point) => Math.abs(point.y))
+  );
   const segments: PlotPoint[][] = [];
   let current: PlotPoint[] = [];
 
@@ -119,16 +122,49 @@ export function plot(
  * Where to cut the curve. Based on a high percentile of |y| rather than a
  * fixed number, so a genuinely large function still plots while an asymptote
  * is still clipped.
+ *
+ * Exported because the searches in `analysis.ts` need the same cutoff: a
+ * turning point the chart refuses to draw is not one worth reporting either.
  */
-function magnitudeLimit(sampled: readonly (PlotPoint | null)[]): number {
-  const magnitudes = sampled
-    .filter((point): point is PlotPoint => point !== null)
-    .map((point) => Math.abs(point.y))
-    .sort((a, b) => a - b);
+export function magnitudeLimit(magnitudes: readonly number[]): number {
+  const sorted = [...magnitudes].sort((a, b) => a - b);
+  if (sorted.length === 0) return Infinity;
 
-  if (magnitudes.length === 0) return Infinity;
-
-  const index = Math.floor(magnitudes.length * 0.95);
-  const percentile = magnitudes[Math.min(index, magnitudes.length - 1)] ?? 0;
+  const index = Math.floor(sorted.length * 0.95);
+  const percentile = sorted[Math.min(index, sorted.length - 1)] ?? 0;
   return Math.max(percentile * 8, 10);
+}
+
+/**
+ * Sample several functions over one range, sharing a y window.
+ *
+ * Each is plotted independently -- the magnitude cutoff that splits tan(x)
+ * into separate curves has to stay per series, or one steep function would
+ * clip the rest -- and only the resulting windows are merged.
+ */
+export function plotAll(
+  expressions: readonly string[],
+  xMin: number,
+  xMax: number,
+  samples: number = DEFAULT_SAMPLES,
+  context: EvalContext = {}
+): MultiPlotResult {
+  const series = expressions.map((expression) =>
+    plot(expression, xMin, xMax, samples, context)
+  );
+
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  for (const result of series) {
+    if (result.segments.length === 0) continue;
+    yMin = Math.min(yMin, result.yMin);
+    yMax = Math.max(yMax, result.yMax);
+  }
+
+  // Nothing drawable, so any window will do; keep the one an empty plot uses.
+  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+    return { series, yMin: -1, yMax: 1 };
+  }
+
+  return { series, yMin, yMax };
 }

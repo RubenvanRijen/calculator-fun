@@ -14,6 +14,9 @@
     --equals-text: #fff;
     --accent: #ff00aa;
     --plot-line: #ff2fb4;
+    --plot-line-2: #7b2ff7;
+    --plot-line-3: #00a3a3;
+    --plot-line-4: #e07000;
     --muted: rgba(255, 255, 255, .6);
     --error: #ff7b7b;
     --page-text: rgba(0, 0, 0, .75);
@@ -34,6 +37,9 @@
     --equals-text: #fff;
     --accent: #ff4fc3;
     --plot-line: #ff4fc3;
+    --plot-line-2: #a77bff;
+    --plot-line-3: #38e0d0;
+    --plot-line-4: #ffa64d;
     --muted: rgba(242, 233, 255, .55);
     --error: #ff9c9c;
     --page-text: rgba(242, 233, 255, .8);
@@ -455,6 +461,13 @@ body {
     gap: 6px;
 }
 
+/* The trace arrows are a pair: wrapping one without the other reads as a
+   stray button on a line of its own. */
+.chip-group {
+    display: flex;
+    gap: 6px;
+}
+
 .chip {
     cursor: pointer;
     font-size: .8rem;
@@ -496,6 +509,39 @@ body {
     stroke: var(--plot-line);
     stroke-width: 2;
     vector-effect: non-scaling-stroke;
+}
+
+.plot-line[data-series="1"] { stroke: var(--plot-line-2); }
+.plot-line[data-series="2"] { stroke: var(--plot-line-3); }
+.plot-line[data-series="3"] { stroke: var(--plot-line-4); }
+
+/* The marker sits on one curve and the readout names it, so it has to be
+   that curve's colour or the two disagree. */
+.plot-marker[data-series="1"] { fill: var(--plot-line-2); }
+.plot-marker[data-series="2"] { fill: var(--plot-line-3); }
+.plot-marker[data-series="3"] { fill: var(--plot-line-4); }
+
+.series-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* The colour swatch doubles as the label, so a curve can be matched to its
+   field without a separate legend. */
+.series-label {
+    width: 2.2em;
+    flex: none;
+    color: var(--plot-line);
+}
+
+.series-label[data-series-label="1"] { color: var(--plot-line-2); }
+.series-label[data-series-label="2"] { color: var(--plot-line-3); }
+.series-label[data-series-label="3"] { color: var(--plot-line-4); }
+
+.field-inline .series-label {
+    text-transform: none;
+    font-size: .85rem;
 }
 
 .plot-marker {

@@ -12,11 +12,24 @@ tests, type checking, Docker and CI.
 ```
 ts/
   expression.ts       tokenizer, shunting-yard, RPN evaluator
-  calculator.ts       state machine, no DOM
-  graph.ts            samples a function across a range
+  exact.ts            exact arithmetic on BigInt: fractions, surds, pi
+  exact-evaluator.ts  the same RPN, evaluated exactly where it can be
+  format.ts           how an expression and a result are spelled
+  calculator.ts       the facade the UI talks to, no DOM
+  expression-buffer.ts  the text being edited, and the caret in it
+  history-log.ts      past calculations
+  memory-register.ts  the M keys
+  graph.ts            samples functions across a range
+  analysis.ts         roots, intersections and turning points
   storage.ts          localStorage, guarded
   theme.ts            light/dark
-  index.ts            binds it all to the page
+  index.ts            composition root: builds the parts and wires them
+  ui/                 one module per region of the page
+    keypad.ts         the action registry, the 2nd layer, the keyboard
+    display.ts        the expression and result lines
+    history-panel.ts  |
+    register-panel.ts |  the three side-panel tabs
+    graph-panel.ts    |
   *.test.ts           unit tests
   types/              one type alias per file
   interfaces/         one interface per file
@@ -33,7 +46,14 @@ per file. No type or interface is declared anywhere else — `calculator.ts` and
 erases entirely, so nothing extra is loaded at runtime.
 
 The calculator logic is kept free of the DOM, so it can be tested without a
-browser; `ts/index.ts` is the only part that touches elements and listeners.
+browser. `Calculator` is a facade: it owns no text or history of its own but
+delegates to `ExpressionBuffer`, `HistoryLog` and `MemoryRegister`, which is
+what keeps it from growing into one thousand-line class. Everything that
+touches elements and listeners lives under `ts/ui/`, and `ts/index.ts` builds
+those parts and hands them to each other — it makes no decisions itself.
+
+Each UI module takes an `AbortSignal`, so every listener it adds comes off
+together.
 
 ## Running it
 
@@ -74,12 +94,43 @@ and any left open are closed for you when you press `=`.
 **Live preview.** The upper line shows the expression as typed; the lower line
 shows its value as soon as it is valid, so precedence is visible as you go.
 
-**ƒ(x) grapher.** The second tab plots a function of `x` as inline SVG — no
-charting library. Supports `sin cos tan sqrt abs ln log`, `π`, `e`, implied
-multiplication (`2x`, `3(x+1)`), and adjustable range. Discontinuous functions
-such as `1/x` and `tan(x)` are drawn as separate curves rather than joined by
-vertical streaks. Hover, or drag a finger, to trace the curve and read off
-`x` and `ƒ(x)`.
+**ƒ(x) grapher.** The second tab plots up to four functions of `x` as inline
+SVG — no charting library. Supports `sin cos tan sqrt abs ln log`, `π`, `e`,
+implied multiplication (`2x`, `3(x+1)`), the stored registers, and an
+adjustable range. `Y1` to `Y4` each get their own colour, matched by the label
+beside the field. Discontinuous functions such as `1/x` and `tan(x)` are drawn
+as separate curves rather than joined by vertical streaks, and the cutoff that
+splits them is measured per series, so one steep curve does not chop up its
+neighbours.
+
+Hover, or drag a finger, to trace whichever curve is nearest the pointer; the
+readout names it, as `Y2   x = 1.5   y = 2.99`. The `◀` `▶` chips step the
+trace along, and `zoom +` / `zoom −` / `reset` move the window.
+
+**Graph analysis.** `root`, `min`, `max` and `intersect` run numeric searches
+over the visible range and drop the trace marker on what they find:
+
+- **root** scans for a sign change and bisects it. A sign change is only
+  accepted once the curve is shown to shrink towards it, so the pole in
+  `1/(x-3)` — which flips sign just as a root does — is skipped rather than
+  reported, and the search carries on to any genuine root beyond it. The `y`
+  shown is `0`, because that is what a root's value is; the `-4.4e-16` the
+  float actually leaves behind is its error bar, not the answer.
+- **min** / **max** take the best sample of a coarse scan and refine it with a
+  ternary search, then round the `x` as far as the curve allows — so the vertex
+  of `x²-2` reports `x = 0` rather than `x = 1.054e-8`. The rounding never
+  leaves the window: on a curve with no turning point the answer sits on the
+  edge of the range, and rounding outwards would answer with a point that is
+  not in view. Samples running up an asymptote are left out, using the same
+  cutoff that decides where the chart stops drawing — a maximum the plot
+  refuses to draw would put the marker where there is no curve.
+- **intersect** is a root of the difference of the two curves, and needs two
+  of them; it says so when only one is drawn.
+
+Searches run over the window, so zooming in on a region is how you pick which
+root or turning point you want. Zooming keeps the marker where it is, unless
+the new window no longer contains it — then the trace is dropped rather than
+left describing a point off the edge.
 
 **Repeat equals.** `5 + 3 =` gives 8; press `=` again for 11, and again for 14.
 
@@ -202,7 +253,7 @@ the operands are left alone so `DEL` can fix the entry.
 the button wiring opt into jsdom per file.
 
 ```bash
-npm test             # 221 unit tests
+npm test             # 799 unit tests
 npm run test:watch
 npm run coverage     # with thresholds
 npm run test:e2e     # Playwright, real browser, desktop + mobile
