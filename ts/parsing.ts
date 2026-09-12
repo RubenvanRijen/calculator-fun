@@ -4,10 +4,20 @@ import type { ParsedExpression } from "@/types/parsed-expression.ts";
 /**
  * How many parses to keep.
  *
- * Generous next to what is ever live -- four Y expressions is the most the UI
- * can hold -- and the surplus is what covers typing: every keystroke in a
- * graph field asks for a parse of a different string, and without the room to
- * spare those would evict the curves the chart is still drawing.
+ * A bound on the memory, and deliberately not a promise about any particular
+ * entry. Typing is what fills this: every keystroke asks about a string
+ * nobody will ask about again -- a graph field parses what it now holds, and
+ * the keypad parses the line so far, twice, once as typed and once with any
+ * trailing operator taken off. Thirty-five characters on the keypad is enough
+ * churn to push out four plotted curves, and that is fine. Nothing depends on
+ * a curve staying: the next redraw reads it again for about four microseconds
+ * and puts it back. Tuning this number to try to prevent that would be paying
+ * memory for nothing.
+ *
+ * What it does have to be is comfortably more than the few strings that are
+ * hot at one moment, which is what makes the readings that matter -- a redraw
+ * re-reading its curves, an = re-reading the line just typed -- land on
+ * something already here.
  */
 const MAX_REMEMBERED = 64;
 
@@ -22,17 +32,19 @@ const remembered = new Map<string, ParsedExpression>();
  * evaluation, not per parse, which is why a stored value changed between two
  * draws is still seen.
  *
- * Worth remembering because the chart parses far more often than it is typed
- * into: a redraw re-reads every curve, the numeric searches compile one each,
- * and a fifty-row table over four functions asks four more. All of that is the
- * same handful of strings over and over.
+ * Worth remembering because both halves of the app read the same text several
+ * times over. A redraw re-reads every curve, the numeric searches compile one
+ * each, and a fifty-row table over four functions asks four more. On the
+ * keypad it is pressing = that repeats: the answer and its exact form are two
+ * more readings of the line the preview has just read, so the press that
+ * someone is actually waiting on parses nothing at all.
  *
  * Evicted least-recently-used, and it has to be: oldest-first would throw away
  * exactly the parses worth keeping. The four Y expressions are inserted once
- * and then only ever read, while every keystroke in a graph field inserts a
- * string that is never asked for again -- so on insertion order the curves are
- * the oldest entries in the map, and a long enough edit would evict the ones
- * the chart is still drawing. Re-inserting on a hit costs a Map delete and add
+ * and then only ever read, while every keystroke inserts a string that is
+ * never asked for again -- so on insertion order the curves are the oldest
+ * entries in the map, and even a short edit would take out the ones being
+ * read on every redraw. Re-inserting on a hit costs a Map delete and add
  * against a parse saved, which is not a close contest.
  */
 export function parseExpression(expression: string): ParsedExpression {

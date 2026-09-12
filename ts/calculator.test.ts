@@ -348,6 +348,21 @@ describe("Calculator", () => {
       expect(calculator.error).toBe("Cannot divide by zero");
     });
 
+    // A failed parse is remembered like any other, so the second reading never
+    // reaches the parser. The message has to come back off the remembered
+    // failure rather than being replaced by a generic one.
+    it("reports the same parse error when the same text is computed again", () => {
+      const first = new Calculator();
+      first.insert("sin");
+      first.compute();
+      expect(first.error).toBe('Expected ( after "sin"');
+
+      const again = new Calculator();
+      again.insert("sin");
+      again.compute();
+      expect(again.error).toBe('Expected ( after "sin"');
+    });
+
     it("clears the error on the next keypress", () => {
       type(calculator, ["5", "÷", "0", "="]);
       type(calculator, ["1"]);
@@ -947,6 +962,30 @@ describe("stored values", () => {
     calculator.appendRegister("A");
     type(calculator, ["+", "8", "="]);
     expect(calculator.resultDisplay).toBe("50");
+  });
+
+  // The parse of "A*3" is remembered, so the second = reads a token list that
+  // was built when A was 2. The value has to come off the register at
+  // evaluation, not off whatever was there when the text was first read.
+  it("uses a register's current value when the same expression is computed again", () => {
+    type(calculator, ["2"]);
+    calculator.store("A");
+    calculator.clear();
+    calculator.appendRegister("A");
+    type(calculator, ["*", "3", "="]);
+    expect(calculator.resultDisplay).toBe("6");
+
+    calculator.clear();
+    type(calculator, ["1", "0"]);
+    calculator.store("A");
+    calculator.clear();
+    calculator.appendRegister("A");
+    type(calculator, ["*", "3", "="]);
+    expect(calculator.resultDisplay).toBe("30");
+    // Both halves, because they are worked out by different evaluators over
+    // the same remembered tokens, and resultDisplay prefers the exact one --
+    // which would hide a stale answer on the float side entirely.
+    expect(calculator.lastAnswer).toBe(30);
   });
 
   it("says so rather than doing nothing when there is nothing to store", () => {

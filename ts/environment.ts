@@ -1,10 +1,12 @@
-import { evaluateString, toRpn, tokenize } from "@/expression.ts";
+import { evaluateRpn } from "@/expression.ts";
+import { parseExpression } from "@/parsing.ts";
 import { evaluateExactRpn } from "@/exact-evaluator.ts";
 import { roundResult } from "@/format.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { ExactValue } from "@/interfaces/exact-value.ts";
 import type { RegisterName } from "@/types/register-name.ts";
+import type { Token } from "@/types/token.ts";
 
 /**
  * What an expression means beyond its own tokens.
@@ -76,9 +78,25 @@ export class Environment {
     };
   }
 
+  /**
+   * The RPN of an expression, or the parse error as something to throw.
+   *
+   * Read through the memo, which is what the grapher reads through. The
+   * keypad asks for the same text far more often than it looks: the preview
+   * re-reads the whole line on every keystroke, and pressing = reads it twice
+   * more, once for the number and once for the exact form.
+   */
+  #rpnOf(expression: string): readonly Token[] {
+    const { rpn, error } = parseExpression(expression);
+    // The same message the parser itself would have thrown, and the same
+    // message the calculator would have put on the error line.
+    if (rpn === null) throw new Error(error);
+    return rpn;
+  }
+
   /** Work out what an expression comes to. Throws what the parser throws. */
   evaluate(expression: string): number {
-    return evaluateString(expression, this.context);
+    return evaluateRpn(this.#rpnOf(expression), this.context);
   }
 
   /**
@@ -97,10 +115,21 @@ export class Environment {
     }
   }
 
-  /** The exact reading of an expression, where it has one. */
+  /**
+   * The exact reading of an expression, where it has one.
+   *
+   * The catch has nothing reachable to catch: the exact evaluator declines by
+   * answering null -- for a division by zero, a root of a negative, a power
+   * too large to hold -- and the parse failure that used to land here returns
+   * above it now. It stays because of what it protects, not what it has
+   * caught: the exact form is a bonus on top of the answer, and an unguarded
+   * throw from working it out would take the answer down with it.
+   */
   exactValueOf(expression: string): ExactValue | null {
+    const { rpn } = parseExpression(expression);
+    if (rpn === null) return null;
     try {
-      return evaluateExactRpn(toRpn(tokenize(expression)), this.context);
+      return evaluateExactRpn(rpn, this.context);
     } catch {
       return null;
     }
