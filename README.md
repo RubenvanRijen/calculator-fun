@@ -1,6 +1,7 @@
 # calculator-fun
 
-A small calculator in TypeScript, with tests, type checking, Docker and CI.
+A small calculator in TypeScript, with keyboard support, memory keys, a
+history panel, tests, type checking, Docker and CI.
 
 ![Example 1](examples/example-1.png)
 ![Example 2](examples/example-2.gif)
@@ -10,13 +11,24 @@ A small calculator in TypeScript, with tests, type checking, Docker and CI.
 ```
 ts/
   calculator.ts       state machine, no DOM
-  index.ts            binds it to the buttons
+  index.ts            binds it to the buttons and the keyboard
   calculator.test.ts  logic tests
   index.test.ts       DOM-wiring tests (jsdom)
+  types/              one type alias per file
+    operation.ts        Operation
+  interfaces/         one interface per file
+    history-entry.ts     HistoryEntry
+    calculator-handle.ts CalculatorHandle
+  enums/              one enum per file (none yet)
 docker/             Dockerfile + nginx config
 index.html          the page
 favicon.svg         icon
 ```
+
+Types, interfaces and enums each live in their own directory, one declaration
+per file. No type or interface is declared anywhere else — `calculator.ts` and
+`index.ts` import theirs with `import type`, which `verbatimModuleSyntax`
+erases entirely, so nothing extra is loaded at runtime.
 
 The calculator logic is kept free of the DOM, so it can be tested without a
 browser; `ts/index.ts` is the only part that touches elements and listeners.
@@ -38,13 +50,51 @@ npm run build        # tsc -> dist/, then serve the folder
 browser loads `dist/index.js` directly. There is no bundler in the output —
 Vite is used only as the dev server.
 
+## Features
+
+**Keyboard** — the whole calculator is usable without the mouse:
+
+| Key | Action |
+| --- | --- |
+| `0`-`9` `.` | digits |
+| `+` `-` `*` `/` | operators (`/` maps to the `÷` key) |
+| `%` | percent |
+| `Enter` or `=` | compute |
+| `Backspace` | delete last character |
+| `Escape` | clear |
+
+The matching on-screen key flashes, so the mapping is visible. A focused button
+keeps handling its own `Enter`, so nothing fires twice.
+
+**Percent** behaves like a physical calculator: inside a pending `+` or `-` it
+reads as "percent of the first operand", so `50 + 10 %` is `55`, not `50.1`.
+Inside `*` or `÷` there is no sensible base, so it is a plain division by 100.
+
+**Sign toggle** (`±`) flips the current operand, and digits stay appendable
+afterwards.
+
+**Memory** (`MC` `MR` `M+` `M-`) with an `M` indicator on the display while
+memory holds a non-zero value. Memory survives `AC`.
+
+**History** lists completed sums, newest first, capped at 50. Click an entry to
+load its result back into the display. History survives `AC` and has its own
+Clear button. A failed sum is not recorded.
+
+**Results are rounded** to 12 significant digits, so `0.1 + 0.2` shows `0.3`
+rather than `0.30000000000000004`. That is well inside a double's precision, so
+no honest result is changed.
+
+**Errors are inline** — dividing by zero writes a message into the display
+rather than opening a browser `alert()`. It clears on the next keypress, and
+the operands are left alone so `DEL` can fix the entry.
+
 ## Tests
 
 [Vitest](https://vitest.dev). Logic tests run in Node; the tests that exercise
 the button wiring opt into jsdom per file.
 
 ```bash
-npm test             # 60 tests
+npm test             # 117 tests
 npm run test:watch
 npm run coverage     # with thresholds
 ```

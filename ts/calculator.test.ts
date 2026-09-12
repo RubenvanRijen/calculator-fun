@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Calculator, formatOperand, isOperation } from "./calculator.js";
-import type { Operation } from "./calculator.js";
+import type { Operation } from "./types/operation.js";
 
 /** Type a whole expression into a calculator, one keypress at a time. */
 function type(calculator: Calculator, keys: string[]): Calculator {
@@ -125,7 +125,7 @@ describe("Calculator", () => {
   describe("dividing by zero", () => {
     it("reports an error instead of producing Infinity", () => {
       type(calculator, ["5", "÷", "0", "="]);
-      expect(calculator.error).toBe("Cannot divide by zero.");
+      expect(calculator.error).toBe("Cannot divide by zero");
       expect(calculator.currentOperand).toBe("0");
       expect(calculator.currentOperand).not.toBe("Infinity");
     });
@@ -148,7 +148,7 @@ describe("Calculator", () => {
     it("does not fold a chain through a division by zero", () => {
       type(calculator, ["5", "÷", "0"]);
       calculator.chooseOperation("+" as Operation);
-      expect(calculator.error).toBe("Cannot divide by zero.");
+      expect(calculator.error).toBe("Cannot divide by zero");
       expect(calculator.operation).toBe("÷");
     });
   });
@@ -218,5 +218,232 @@ describe("isOperation", () => {
 
   it.each(["/", "x", "=", "1", ""])("rejects %j", (value) => {
     expect(isOperation(value)).toBe(false);
+  });
+});
+
+describe("rounding", () => {
+  let calculator: Calculator;
+  beforeEach(() => { calculator = new Calculator(); });
+
+  it("trims binary floating point noise", () => {
+    type(calculator, ["0", ".", "1", "+", "0", ".", "2", "="]);
+    expect(calculator.currentOperand).toBe("0.3");
+  });
+
+  it("keeps a genuinely long result", () => {
+    type(calculator, ["1", "÷", "3", "="]);
+    expect(calculator.currentOperand).toBe("0.333333333333");
+  });
+
+  it("does not round an exact integer result", () => {
+    type(calculator, ["1", "0", "0", "0", "*", "1", "0", "0", "0", "="]);
+    expect(calculator.currentOperand).toBe("1000000");
+  });
+});
+
+describe("toggleSign", () => {
+  let calculator: Calculator;
+  beforeEach(() => { calculator = new Calculator(); });
+
+  it("makes a positive negative", () => {
+    type(calculator, ["5"]);
+    calculator.toggleSign();
+    expect(calculator.currentOperand).toBe("-5");
+  });
+
+  it("makes a negative positive again", () => {
+    type(calculator, ["5"]);
+    calculator.toggleSign();
+    calculator.toggleSign();
+    expect(calculator.currentOperand).toBe("5");
+  });
+
+  it("is a no-op on an empty operand", () => {
+    calculator.toggleSign();
+    expect(calculator.currentOperand).toBe("");
+  });
+
+  it("feeds a negative operand into a sum", () => {
+    type(calculator, ["5"]);
+    calculator.toggleSign();
+    type(calculator, ["+", "8", "="]);
+    expect(calculator.currentOperand).toBe("3");
+  });
+
+  it("keeps digits appendable after flipping", () => {
+    type(calculator, ["1"]);
+    calculator.toggleSign();
+    type(calculator, ["2"]);
+    expect(calculator.currentOperand).toBe("-12");
+  });
+});
+
+describe("percent", () => {
+  let calculator: Calculator;
+  beforeEach(() => { calculator = new Calculator(); });
+
+  it("divides a standalone number by 100", () => {
+    type(calculator, ["5", "0"]);
+    calculator.percent();
+    expect(calculator.currentOperand).toBe("0.5");
+  });
+
+  it("reads as 'percent of' inside an addition", () => {
+    type(calculator, ["5", "0", "+", "1", "0"]);
+    calculator.percent();
+    expect(calculator.currentOperand).toBe("5");
+    type(calculator, ["="]);
+    expect(calculator.currentOperand).toBe("55");
+  });
+
+  it("reads as 'percent of' inside a subtraction", () => {
+    type(calculator, ["5", "0", "-", "1", "0"]);
+    calculator.percent();
+    type(calculator, ["="]);
+    expect(calculator.currentOperand).toBe("45");
+  });
+
+  it("is a plain division by 100 inside a multiplication", () => {
+    type(calculator, ["5", "0", "*", "1", "0"]);
+    calculator.percent();
+    expect(calculator.currentOperand).toBe("0.1");
+  });
+
+  it("is a no-op on an empty operand", () => {
+    calculator.percent();
+    expect(calculator.currentOperand).toBe("");
+  });
+});
+
+describe("memory", () => {
+  let calculator: Calculator;
+  beforeEach(() => { calculator = new Calculator(); });
+
+  it("starts empty", () => {
+    expect(calculator.memory).toBe(0);
+    expect(calculator.hasMemory).toBe(false);
+  });
+
+  it("adds the displayed value", () => {
+    type(calculator, ["7"]);
+    calculator.memoryAdd();
+    expect(calculator.memory).toBe(7);
+    expect(calculator.hasMemory).toBe(true);
+  });
+
+  it("subtracts the displayed value", () => {
+    type(calculator, ["7"]);
+    calculator.memoryAdd();
+    calculator.clear();
+    type(calculator, ["2"]);
+    calculator.memorySubtract();
+    expect(calculator.memory).toBe(5);
+  });
+
+  it("recalls into the display", () => {
+    type(calculator, ["7"]);
+    calculator.memoryAdd();
+    calculator.clear();
+    calculator.memoryRecall();
+    expect(calculator.currentOperand).toBe("7");
+  });
+
+  it("clears", () => {
+    type(calculator, ["7"]);
+    calculator.memoryAdd();
+    calculator.memoryClear();
+    expect(calculator.memory).toBe(0);
+    expect(calculator.hasMemory).toBe(false);
+  });
+
+  it("reports no memory once it nets back to zero", () => {
+    type(calculator, ["7"]);
+    calculator.memoryAdd();
+    calculator.memorySubtract();
+    expect(calculator.hasMemory).toBe(false);
+  });
+
+  it("ignores M+ with nothing displayed", () => {
+    calculator.memoryAdd();
+    expect(calculator.memory).toBe(0);
+  });
+
+  it("survives AC", () => {
+    type(calculator, ["7"]);
+    calculator.memoryAdd();
+    calculator.clear();
+    expect(calculator.memory).toBe(7);
+  });
+});
+
+describe("history", () => {
+  let calculator: Calculator;
+  beforeEach(() => { calculator = new Calculator(); });
+
+  it("starts empty", () => {
+    expect(calculator.history).toHaveLength(0);
+  });
+
+  it("records a completed sum", () => {
+    type(calculator, ["1", "2", "+", "3", "="]);
+    expect(calculator.history).toEqual([{ expression: "12 + 3", result: "15" }]);
+  });
+
+  it("formats the expression with thousands separators", () => {
+    type(calculator, ["1", "2", "0", "0", "+", "3", "="]);
+    expect(calculator.history[0]?.expression).toBe("1,200 + 3");
+  });
+
+  it("puts the newest entry first", () => {
+    type(calculator, ["1", "+", "1", "="]);
+    calculator.clear();
+    type(calculator, ["2", "+", "2", "="]);
+    expect(calculator.history.map((e) => e.result)).toEqual(["4", "2"]);
+  });
+
+  it("records each fold of a chain", () => {
+    type(calculator, ["1", "+", "2", "+", "3", "="]);
+    expect(calculator.history.map((e) => e.result)).toEqual(["6", "3"]);
+  });
+
+  it("does not record a failed division", () => {
+    type(calculator, ["5", "÷", "0", "="]);
+    expect(calculator.history).toHaveLength(0);
+  });
+
+  it("does not record an incomplete sum", () => {
+    type(calculator, ["5", "+"]);
+    calculator.compute();
+    expect(calculator.history).toHaveLength(0);
+  });
+
+  it("clears on request", () => {
+    type(calculator, ["1", "+", "1", "="]);
+    calculator.clearHistory();
+    expect(calculator.history).toHaveLength(0);
+  });
+
+  it("survives AC", () => {
+    type(calculator, ["1", "+", "1", "="]);
+    calculator.clear();
+    expect(calculator.history).toHaveLength(1);
+  });
+
+  it("caps at 50 entries", () => {
+    for (let i = 0; i < 55; i++) {
+      calculator.clear();
+      type(calculator, ["1", "+", "1", "="]);
+    }
+    expect(calculator.history).toHaveLength(50);
+  });
+});
+
+describe("recall", () => {
+  it("loads a value and clears any error", () => {
+    const calculator = new Calculator();
+    type(calculator, ["5", "÷", "0", "="]);
+    calculator.recall("42");
+    expect(calculator.currentOperand).toBe("42");
+    expect(calculator.error).toBeNull();
   });
 });
