@@ -1,9 +1,16 @@
-/** The named single-argument functions the grapher accepts. */
+/** The named single-argument functions the calculator accepts. */
 export type FunctionName =
   | "sin"
   | "cos"
   | "tan"
+  | "asin"
+  | "acos"
+  | "atan"
+  | "sinh"
+  | "cosh"
+  | "tanh"
   | "sqrt"
   | "abs"
   | "ln"
-  | "log";
+  | "log"
+  | "exp";

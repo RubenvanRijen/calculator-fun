@@ -7,7 +7,7 @@
     <title>Calculator fun Ruben</title>
     <link href="/favicon.svg" rel="icon" type="image/svg+xml">
     <link href="/styles.css" rel="stylesheet">
-    <script type="module" src="/dist/index.js" defer></script>
+    <script type="module" src="/ts/index.ts"></script>
 </head>
 
 <body>
@@ -19,55 +19,63 @@
     </header>
 
     <main class="app">
-        <div class="calculator-grid">
+        <div class="calculator-grid" data-keypad>
             <div class="output">
                 <div class="output-meta">
                     <span data-memory-indicator class="badge" hidden>M</span>
                     <span data-paren-indicator class="badge" hidden>( 0</span>
+                    <span data-angle-indicator class="badge">RAD</span>
+                    <span data-exact-indicator class="badge" hidden>EXACT</span>
                     <div data-expression class="expression" aria-live="polite"></div>
                 </div>
                 <div data-result class="result" aria-live="polite"></div>
                 <div data-error class="error" role="alert" hidden></div>
             </div>
 
-            <button data-function="sqrt" class="key-small">√</button>
-            <button data-square class="key-small">x²</button>
-            <button data-reciprocal class="key-small">1/x</button>
-            <button data-constant="π" class="key-small">π</button>
+            <button data-action="ans" data-action-alt="random" class="key-small"><span class="legend">Ans</span><span class="legend-alt">rand</span></button>
+            <button data-action="cursor-left" class="key-small" aria-label="Move left"><span class="legend">&#x25C0;</span></button>
+            <button data-action="cursor-right" class="key-small" aria-label="Move right"><span class="legend">&#x25B6;</span></button>
+            <button data-action="recall-previous" class="key-small" aria-label="Previous entry"><span class="legend">&#x25B2;</span></button>
+            <button data-action="recall-next" class="key-small" aria-label="Next entry"><span class="legend">&#x25BC;</span></button>
 
-            <button data-memory="clear" class="key-small">MC</button>
-            <button data-memory="recall" class="key-small">MR</button>
-            <button data-memory="add" class="key-small">M+</button>
-            <button data-memory="subtract" class="key-small">M−</button>
-
-            <button data-open-paren class="key-small">(</button>
-            <button data-close-paren class="key-small">)</button>
-            <button data-all-clear class="key-action">AC</button>
-            <button data-delete class="key-action">DEL</button>
-
-            <button data-number="7">7</button>
-            <button data-number="8">8</button>
-            <button data-number="9">9</button>
-            <button data-operation="÷" class="key-operator">÷</button>
-
-            <button data-number="4">4</button>
-            <button data-number="5">5</button>
-            <button data-number="6">6</button>
-            <button data-operation="*" class="key-operator">*</button>
-
-            <button data-number="1">1</button>
-            <button data-number="2">2</button>
-            <button data-number="3">3</button>
-            <button data-operation="-" class="key-operator">-</button>
-
-            <button data-sign>±</button>
-            <button data-number="0">0</button>
-            <button data-number=".">.</button>
-            <button data-operation="+" class="key-operator">+</button>
-
-            <button data-operation="^" class="key-small">xⁿ</button>
-            <button data-percent>%</button>
-            <button data-equals class="key-equals span-two">=</button>
+            <button data-action="second" class="key-second"><span class="legend">2nd</span></button>
+            <button data-action="angle-mode" class="key-small"><span class="legend">mode</span></button>
+            <button data-action="function" data-arg="sqrt" data-action-alt="function" data-arg-alt="abs" class="key-small"><span class="legend">√</span><span class="legend-alt">abs</span></button>
+            <button data-action="square" data-action-alt="operation" data-arg-alt="^" class="key-small"><span class="legend">x²</span><span class="legend-alt">xⁿ</span></button>
+            <button data-action="reciprocal" data-action-alt="mixed-fraction" class="key-small"><span class="legend">1/x</span><span class="legend-alt">U n/d</span></button>
+            <button data-action="function" data-arg="sin" data-action-alt="function" data-arg-alt="asin" class="key-small"><span class="legend">sin</span><span class="legend-alt">sin⁻¹</span></button>
+            <button data-action="function" data-arg="cos" data-action-alt="function" data-arg-alt="acos" class="key-small"><span class="legend">cos</span><span class="legend-alt">cos⁻¹</span></button>
+            <button data-action="function" data-arg="tan" data-action-alt="function" data-arg-alt="atan" class="key-small"><span class="legend">tan</span><span class="legend-alt">tan⁻¹</span></button>
+            <button data-action="function" data-arg="log" data-action-alt="insert" data-arg-alt="10^(" class="key-small"><span class="legend">log</span><span class="legend-alt">10ˣ</span></button>
+            <button data-action="function" data-arg="ln" data-action-alt="function" data-arg-alt="exp" class="key-small"><span class="legend">ln</span><span class="legend-alt">eˣ</span></button>
+            <button data-action="memory" data-arg="clear" data-action-alt="clear-history" class="key-small"><span class="legend">MC</span><span class="legend-alt">CH</span></button>
+            <button data-action="memory" data-arg="recall" class="key-small"><span class="legend">MR</span></button>
+            <button data-action="memory" data-arg="add" class="key-small"><span class="legend">M+</span></button>
+            <button data-action="memory" data-arg="subtract" class="key-small"><span class="legend">M−</span></button>
+            <button data-action="constant" data-arg="π" data-action-alt="constant" data-arg-alt="(e)" class="key-small"><span class="legend">π</span><span class="legend-alt">e</span></button>
+            <button data-action="open-paren" class="key-small"><span class="legend">(</span></button>
+            <button data-action="close-paren" class="key-small"><span class="legend">)</span></button>
+            <button data-action="clear" class="key-action"><span class="legend">AC</span></button>
+            <button data-action="delete" class="key-action"><span class="legend">DEL</span></button>
+            <button data-action="operation" data-arg="÷" data-action-alt="operation" data-arg-alt="nCr" class="key-operator"><span class="legend">÷</span><span class="legend-alt">nCr</span></button>
+            <button data-action="number" data-arg="7"><span class="legend">7</span></button>
+            <button data-action="number" data-arg="8"><span class="legend">8</span></button>
+            <button data-action="number" data-arg="9"><span class="legend">9</span></button>
+            <button data-action="fraction" data-action-alt="toggle-exact" class="key-small"><span class="legend">n/d</span><span class="legend-alt">F⇔D</span></button>
+            <button data-action="operation" data-arg="*" data-action-alt="operation" data-arg-alt="nPr" class="key-operator"><span class="legend">*</span><span class="legend-alt">nPr</span></button>
+            <button data-action="number" data-arg="4"><span class="legend">4</span></button>
+            <button data-action="number" data-arg="5"><span class="legend">5</span></button>
+            <button data-action="number" data-arg="6"><span class="legend">6</span></button>
+            <button data-action="percent" data-action-alt="factorial" class="key-small"><span class="legend">%</span><span class="legend-alt">n!</span></button>
+            <button data-action="operation" data-arg="-" class="key-operator"><span class="legend">-</span></button>
+            <button data-action="number" data-arg="1"><span class="legend">1</span></button>
+            <button data-action="number" data-arg="2"><span class="legend">2</span></button>
+            <button data-action="number" data-arg="3"><span class="legend">3</span></button>
+            <button data-action="sign"><span class="legend">±</span></button>
+            <button data-action="operation" data-arg="+" class="key-operator"><span class="legend">+</span></button>
+            <button data-action="number" data-arg="0" class="span-two"><span class="legend">0</span></button>
+            <button data-action="number" data-arg="." data-action-alt="exponent" class="key-small"><span class="legend">.</span><span class="legend-alt">EE</span></button>
+            <button data-action="equals" class="key-equals span-two"><span class="legend">=</span></button>
         </div>
 
         <aside class="panel">
@@ -75,6 +83,10 @@
                 <button data-tab="history" class="tab is-active" role="tab" type="button"
                     aria-selected="true">History</button>
                 <button data-tab="graph" class="tab" role="tab" type="button" aria-selected="false">ƒ(x)</button>
+                <button data-tab="table" class="tab" role="tab" type="button" aria-selected="false">Table</button>
+                <button data-tab="stats" class="tab" role="tab" type="button" aria-selected="false">Stats</button>
+                <button data-tab="matrix" class="tab" role="tab" type="button" aria-selected="false">Matrix</button>
+                <button data-tab="vars" class="tab" role="tab" type="button" aria-selected="false">Vars</button>
             </div>
 
             <section data-panel="history" class="panel-body">
@@ -86,12 +98,173 @@
                 <ul data-history-list class="history-list"></ul>
             </section>
 
+            <section data-panel="table" class="panel-body" hidden>
+                <p class="muted">
+                    The same functions as the &fnof;(x) tab, read off as numbers.
+                    Type them there; this shows every one that has something in it.
+                </p>
+
+                <div class="range">
+                    <label class="field field-inline">
+                        <span class="field-label">start</span>
+                        <input data-table-start class="field-input" type="number" value="0" step="1">
+                    </label>
+                    <label class="field field-inline">
+                        <span class="field-label">&Delta;x</span>
+                        <input data-table-step class="field-input" type="number" value="1" step="0.1">
+                    </label>
+                </div>
+
+                <div class="examples">
+                    <button data-table-page="-1" class="chip" type="button" aria-label="Previous rows">&#x25B2;</button>
+                    <button data-table-page="1" class="chip" type="button" aria-label="Next rows">&#x25BC;</button>
+                </div>
+
+                <p data-table-empty class="muted" hidden>No functions yet &mdash; type one in the &fnof;(x) tab.</p>
+
+                <div class="table-wrap">
+                    <table class="value-table">
+                        <thead>
+                            <tr data-table-head></tr>
+                        </thead>
+                        <tbody data-table-body></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section data-panel="stats" class="panel-body" hidden>
+                <p class="muted">
+                    Two lists. A row needs both values to count as a point;
+                    one on its own still counts towards its own column.
+                </p>
+
+                <div class="examples">
+                    <button data-stats-action="add" class="chip" type="button">+ row</button>
+                    <button data-stats-action="clear" class="chip" type="button">clear</button>
+                    <button data-stats-action="plot" class="chip" type="button">plot &amp; fit</button>
+                </div>
+
+                <div class="table-wrap">
+                    <table class="value-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col" class="series-label" data-series-label="2">L1</th>
+                                <th scope="col" class="series-label" data-series-label="3">L2</th>
+                            </tr>
+                        </thead>
+                        <tbody data-stats-body></tbody>
+                    </table>
+                </div>
+
+                <p data-stats-fit class="fit-line"></p>
+
+                <div class="table-wrap">
+                    <table class="value-table">
+                        <thead>
+                            <tr>
+                                <th scope="col"></th>
+                                <th scope="col" class="series-label" data-series-label="2">L1</th>
+                                <th scope="col" class="series-label" data-series-label="3">L2</th>
+                            </tr>
+                        </thead>
+                        <tbody data-stats-summary></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section data-panel="matrix" class="panel-body" hidden>
+                <p class="muted">
+                    Matrices are worked on here rather than typed into a sum:
+                    there is nowhere in &ldquo;2 + 3&rdquo; for a grid to go.
+                </p>
+
+                <div class="matrix-editor">
+                    <div class="matrix-head">
+                        <span class="field-label matrix-name">A</span>
+                        <label class="field field-inline">
+                            <span class="field-label">rows</span>
+                            <input data-matrix-rows="A" class="field-input size-input" type="number"
+                                min="1" max="4" step="1" value="2" aria-label="Rows in A">
+                        </label>
+                        <label class="field field-inline">
+                            <span class="field-label">cols</span>
+                            <input data-matrix-columns="A" class="field-input size-input" type="number"
+                                min="1" max="4" step="1" value="2" aria-label="Columns in A">
+                        </label>
+                    </div>
+                    <div data-matrix-grid="A" class="matrix-grid"></div>
+                </div>
+                <div class="matrix-editor">
+                    <div class="matrix-head">
+                        <span class="field-label matrix-name">B</span>
+                        <label class="field field-inline">
+                            <span class="field-label">rows</span>
+                            <input data-matrix-rows="B" class="field-input size-input" type="number"
+                                min="1" max="4" step="1" value="2" aria-label="Rows in B">
+                        </label>
+                        <label class="field field-inline">
+                            <span class="field-label">cols</span>
+                            <input data-matrix-columns="B" class="field-input size-input" type="number"
+                                min="1" max="4" step="1" value="2" aria-label="Columns in B">
+                        </label>
+                    </div>
+                    <div data-matrix-grid="B" class="matrix-grid"></div>
+                </div>
+
+                <div class="examples">
+                    <button data-matrix-do="add" class="chip" type="button">A+B</button>
+                    <button data-matrix-do="subtract" class="chip" type="button">A&minus;B</button>
+                    <button data-matrix-do="multiply" class="chip" type="button">A&times;B</button>
+                </div>
+                <div class="examples">
+                    <button data-matrix-do="transpose-A" class="chip" type="button">A&#7488;</button>
+                    <button data-matrix-do="determinant-A" class="chip" type="button">det A</button>
+                    <button data-matrix-do="inverse-A" class="chip" type="button">A&#8315;&sup1;</button>
+                </div>
+                <div class="examples">
+                    <button data-matrix-do="transpose-B" class="chip" type="button">B&#7488;</button>
+                    <button data-matrix-do="determinant-B" class="chip" type="button">det B</button>
+                    <button data-matrix-do="inverse-B" class="chip" type="button">B&#8315;&sup1;</button>
+                </div>
+
+                <div data-matrix-result class="matrix-answer"></div>
+                <p data-matrix-error class="error" role="alert" hidden></p>
+            </section>
+
+            <section data-panel="vars" class="panel-body" hidden>
+                <p class="muted">
+                    Store the displayed value under a letter, then use it in any
+                    expression. The letters are uppercase, so that "Asin(30)" is
+                    A&times;sin(30) rather than asin(30). E and X are not offered:
+                    they already mean Euler's constant and the graph variable.
+                </p>
+                <ul data-register-list class="register-list"></ul>
+            </section>
+
             <section data-panel="graph" class="panel-body" hidden>
-                <label class="field">
-                    <span class="field-label">ƒ(x) =</span>
-                    <input data-graph-input class="field-input" type="text" value="x^2-2"
-                        spellcheck="false" autocomplete="off">
-                </label>
+                <div class="series-list">
+                    <label class="field field-inline">
+                        <span class="field-label series-label" data-series-label="0">Y1</span>
+                        <input data-graph-input="0" class="field-input" type="text" value="x^2-2"
+                            spellcheck="false" autocomplete="off" aria-label="Function Y1">
+                    </label>
+                    <label class="field field-inline">
+                        <span class="field-label series-label" data-series-label="1">Y2</span>
+                        <input data-graph-input="1" class="field-input" type="text" value=""
+                            spellcheck="false" autocomplete="off" aria-label="Function Y2">
+                    </label>
+                    <label class="field field-inline">
+                        <span class="field-label series-label" data-series-label="2">Y3</span>
+                        <input data-graph-input="2" class="field-input" type="text" value=""
+                            spellcheck="false" autocomplete="off" aria-label="Function Y3">
+                    </label>
+                    <label class="field field-inline">
+                        <span class="field-label series-label" data-series-label="3">Y4</span>
+                        <input data-graph-input="3" class="field-input" type="text" value=""
+                            spellcheck="false" autocomplete="off" aria-label="Function Y4">
+                    </label>
+                </div>
 
                 <div class="range">
                     <label class="field field-inline">
@@ -105,28 +278,53 @@
                 </div>
 
                 <div class="examples">
-                    <button data-graph-example="x^2-2" class="chip" type="button">x²−2</button>
-                    <button data-graph-example="sin(x)" class="chip" type="button">sin x</button>
-                    <button data-graph-example="1/x" class="chip" type="button">1/x</button>
-                    <button data-graph-example="sqrt(x)" class="chip" type="button">√x</button>
-                    <button data-graph-example="tan(x)" class="chip" type="button">tan x</button>
+                    <button data-graph-zoom="in" class="chip" type="button">zoom +</button>
+                    <button data-graph-zoom="out" class="chip" type="button">zoom &minus;</button>
+                    <button data-graph-zoom="reset" class="chip" type="button">reset</button>
+                    <button data-graph-scatter class="chip" type="button" aria-pressed="false">data</button>
+                    <span class="chip-group">
+                        <button data-graph-step="-1" class="chip" type="button" aria-label="Trace left">&#x25C0;</button>
+                        <button data-graph-step="1" class="chip" type="button" aria-label="Trace right">&#x25B6;</button>
+                    </span>
+                </div>
+
+                <div class="examples">
+                    <button data-graph-find="root" class="chip" type="button">root</button>
+                    <button data-graph-find="min" class="chip" type="button">min</button>
+                    <button data-graph-find="max" class="chip" type="button">max</button>
+                    <button data-graph-find="intersect" class="chip" type="button">intersect</button>
+                    <span class="chip-group">
+                        <button data-graph-find="slope" class="chip" type="button">dy/dx</button>
+                        <button data-graph-find="area" class="chip" type="button">&int;&fnof;(x)dx</button>
+                    </span>
                 </div>
 
                 <div class="plot-wrap">
                     <svg data-graph-svg class="plot" viewBox="0 0 280 200"
-                        preserveAspectRatio="none" role="img" aria-label="Plot of the function"></svg>
+                        preserveAspectRatio="none" role="img" aria-label="Plot of the functions"></svg>
                     <output data-graph-readout class="readout"></output>
                 </div>
 
                 <p data-graph-error class="error" role="alert" hidden></p>
             </section>
+
         </aside>
     </main>
 
     <p class="hint">
         Keyboard: digits, <kbd>+</kbd> <kbd>-</kbd> <kbd>*</kbd> <kbd>/</kbd> <kbd>^</kbd>
         <kbd>(</kbd> <kbd>)</kbd> <kbd>%</kbd>, <kbd>Enter</kbd> to equal,
-        <kbd>Backspace</kbd> to delete, <kbd>Esc</kbd> to clear.
+        <kbd>Backspace</kbd> to undo a keypress, <kbd>Esc</kbd> to clear,
+        <kbd>&larr;</kbd><kbd>&rarr;</kbd> to move the caret, <kbd>&uarr;</kbd><kbd>&darr;</kbd> for past entries.
+        <br>
+        <kbd>2nd</kbd> reaches the alternate on keys that show one:
+        sin/cos/tan&nbsp;&rarr;&nbsp;their inverses, log&nbsp;&rarr;&nbsp;10&#x02E3;,
+        ln&nbsp;&rarr;&nbsp;e&#x02E3;, &radic;&nbsp;&rarr;&nbsp;abs,
+        &pi;&nbsp;&rarr;&nbsp;e, 1/x&nbsp;&rarr;&nbsp;U&nbsp;n/d (mixed number),
+        .&nbsp;&rarr;&nbsp;EE (scientific notation), MC&nbsp;&rarr;&nbsp;clear history,
+        &divide;&nbsp;&rarr;&nbsp;nCr, *&nbsp;&rarr;&nbsp;nPr, %&nbsp;&rarr;&nbsp;n!,
+        Ans&nbsp;&rarr;&nbsp;rand, n/d&nbsp;&rarr;&nbsp;F&hArr;D.
+        <kbd>mode</kbd> cycles RAD &rarr; GRAD &rarr; DEG.
     </p>
 </body>
 

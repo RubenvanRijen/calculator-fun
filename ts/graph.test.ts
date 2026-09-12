@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { plot } from "./graph.js";
+import { plot, plotAll } from "@/graph.ts";
 
 /** Every point across every segment, for assertions that ignore breaks. */
 function allPoints(result: ReturnType<typeof plot>) {
@@ -82,6 +82,19 @@ describe("plot", () => {
     });
   });
 
+  // The Vars panel shows a value; the grapher has to be able to use it.
+  it("plots an expression that uses a stored value", () => {
+    const result = plot("A*x", -5, 5, 11, { registers: { A: 2 } });
+    expect(result.error).toBeNull();
+    expect(allPoints(result).map((p) => p.y)).toEqual([
+      -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10,
+    ]);
+  });
+
+  it("reports a stored value that is missing", () => {
+    expect(plot("A*x", -5, 5).error).toMatch(/Nothing stored in A/);
+  });
+
   it("respects the sample count", () => {
     expect(allPoints(plot("x", 0, 1, 10))).toHaveLength(10);
   });
@@ -103,5 +116,44 @@ describe("plot", () => {
     it("still reports a genuinely broken expression differently", () => {
       expect(plot("x^^2", -10, 10).error).not.toBe("Not defined in this range");
     });
+  });
+});
+
+describe("plotAll", () => {
+  it("keeps one entry per expression, in order", () => {
+    const result = plotAll(["x", "x^2", "x^3"], -2, 2, 5);
+    expect(result.series).toHaveLength(3);
+    expect(result.series[0]?.segments.flat().map((p) => p.y)).toEqual([-2, -1, 0, 1, 2]);
+    expect(result.series[1]?.segments.flat().map((p) => p.y)).toEqual([4, 1, 0, 1, 4]);
+  });
+
+  it("shares a window wide enough for every series", () => {
+    const result = plotAll(["x", "x^3"], -2, 2, 5);
+    expect(result.yMin).toBeLessThanOrEqual(-8);
+    expect(result.yMax).toBeGreaterThanOrEqual(8);
+  });
+
+  it("ignores a series that cannot be drawn", () => {
+    const result = plotAll(["x", "wobble(x)"], -2, 2, 5);
+    expect(result.series[1]?.error).toMatch(/Unknown name/);
+    // The window still follows the series that did draw.
+    expect(result.yMin).toBeLessThanOrEqual(-2);
+  });
+
+  it("falls back to a usable window when nothing draws", () => {
+    const result = plotAll(["wobble(x)"], -2, 2, 5);
+    expect(result.yMin).toBe(-1);
+    expect(result.yMax).toBe(1);
+  });
+
+  it("keeps the magnitude cutoff per series", () => {
+    // Without that, x^3 would widen the window and stop tan being split.
+    const result = plotAll(["tan(x)", "x^3"], -6, 6, 401);
+    expect(result.series[0]?.segments.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("handles being given nothing", () => {
+    const result = plotAll([], -2, 2, 5);
+    expect(result.series).toHaveLength(0);
   });
 });

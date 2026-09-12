@@ -14,10 +14,14 @@
     --equals-text: #fff;
     --accent: #ff00aa;
     --plot-line: #ff2fb4;
+    --plot-line-2: #7b2ff7;
+    --plot-line-3: #00a3a3;
+    --plot-line-4: #e07000;
     --muted: rgba(255, 255, 255, .6);
     --error: #ff7b7b;
     --page-text: rgba(0, 0, 0, .75);
     --chip: rgba(255, 255, 255, .18);
+    --table-head: #40161b;
 }
 
 :root[data-theme="dark"] {
@@ -34,10 +38,14 @@
     --equals-text: #fff;
     --accent: #ff4fc3;
     --plot-line: #ff4fc3;
+    --plot-line-2: #a77bff;
+    --plot-line-3: #38e0d0;
+    --plot-line-4: #ffa64d;
     --muted: rgba(242, 233, 255, .55);
     --error: #ff9c9c;
     --page-text: rgba(242, 233, 255, .8);
     --chip: rgba(255, 255, 255, .12);
+    --table-head: #14041d;
 }
 
 /* A class that sets `display` would otherwise beat the [hidden] attribute,
@@ -109,8 +117,8 @@ body {
 
 .calculator-grid {
     display: grid;
-    grid-template-columns: repeat(4, 78px);
-    grid-template-rows: minmax(104px, auto) repeat(8, 56px);
+    grid-template-columns: repeat(5, 66px);
+    grid-template-rows: minmax(104px, auto) repeat(9, 48px);
 }
 
 .calculator-grid>button {
@@ -158,6 +166,36 @@ body {
     grid-column: span 2;
 }
 
+.span-three {
+    grid-column: span 3;
+}
+
+/* --- the 2nd shift layer ---------------------------------------------- */
+
+/* Only the active legend is rendered, so a key's accessible name is whichever
+   label is currently showing rather than both concatenated. */
+.legend-alt {
+    display: none;
+}
+
+[data-keypad][data-shift="on"] button[data-action-alt] .legend {
+    display: none;
+}
+
+[data-keypad][data-shift="on"] button[data-action-alt] .legend-alt {
+    display: inline;
+    color: var(--accent);
+}
+
+.key-second {
+    font-size: 1rem;
+}
+
+[data-keypad][data-shift="on"] .key-second {
+    background-color: var(--accent);
+    color: var(--equals-text);
+}
+
 /* --- display ---------------------------------------------------------- */
 
 .output {
@@ -198,6 +236,25 @@ body {
     text-align: right;
 }
 
+/* An empty inline element, so the expression's textContent is unaffected. */
+.caret {
+    display: inline-block;
+    width: 2px;
+    height: 1.05em;
+    margin: 0 -1px;
+    vertical-align: text-bottom;
+    background: var(--accent);
+    animation: caret-blink 1.1s step-end infinite;
+}
+
+@keyframes caret-blink {
+    50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .caret { animation: none; }
+}
+
 .result {
     color: var(--panel-text);
     font-size: 2.2rem;
@@ -220,15 +277,18 @@ body {
     color: var(--panel-text);
 }
 
+/* Six tabs no longer fit on one line of a 280px panel, and the last of them
+   was being cut off the edge. They wrap instead. */
 .tabs {
     display: flex;
+    flex-wrap: wrap;
 }
 
 .tab {
     cursor: pointer;
-    flex: 1;
-    padding: 10px 8px;
-    font-size: .9rem;
+    flex: 1 0 auto;
+    padding: 10px 5px;
+    font-size: .82rem;
     color: var(--muted);
     background: transparent;
     border: none;
@@ -323,6 +383,41 @@ body {
     font-size: 1.15rem;
 }
 
+/* --- stored values ---------------------------------------------------- */
+
+.register-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.register-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--key-border);
+}
+
+.register-letter {
+    font-size: 1.1rem;
+    width: 1.2em;
+    flex: none;
+}
+
+.register-value {
+    flex: 1;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* --- graph ------------------------------------------------------------ */
 
 .field {
@@ -371,6 +466,13 @@ body {
     gap: 6px;
 }
 
+/* The trace arrows are a pair: wrapping one without the other reads as a
+   stray button on a line of its own. */
+.chip-group {
+    display: flex;
+    gap: 6px;
+}
+
 .chip {
     cursor: pointer;
     font-size: .8rem;
@@ -414,6 +516,188 @@ body {
     vector-effect: non-scaling-stroke;
 }
 
+.plot-line[data-series="1"] { stroke: var(--plot-line-2); }
+.plot-line[data-series="2"] { stroke: var(--plot-line-3); }
+.plot-line[data-series="3"] { stroke: var(--plot-line-4); }
+
+/* The marker sits on one curve and the readout names it, so it has to be
+   that curve's colour or the two disagree. */
+.plot-marker[data-series="1"] { fill: var(--plot-line-2); }
+.plot-marker[data-series="2"] { fill: var(--plot-line-3); }
+.plot-marker[data-series="3"] { fill: var(--plot-line-4); }
+
+/* The table scrolls inside this box in both directions. It has to be the
+   scrolling ancestor, or the sticky header below has nothing to stick to and
+   simply scrolls away with the page. */
+.table-wrap {
+    overflow: auto;
+    max-height: 320px;
+    margin-top: 8px;
+}
+
+.value-table {
+    border-collapse: collapse;
+    font-size: .82rem;
+    font-variant-numeric: tabular-nums;
+    width: 100%;
+}
+
+.value-table th,
+.value-table td {
+    padding: 3px 8px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Opaque on purpose. The panel colour is translucent, and rows scroll
+   underneath a sticky header -- through it, if it lets them. */
+.value-table thead th {
+    background: var(--table-head);
+    border-bottom: 1px solid var(--chip);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+}
+
+/* The x column anchors every row, so it reads as a heading rather than data. */
+.value-table tbody th {
+    color: var(--muted);
+    font-weight: 500;
+}
+
+/* Banding, so the eye keeps its place across a wide row. */
+.value-table tbody tr:nth-child(even) {
+    background: var(--chip);
+}
+
+/* The editable cells of the list editor: a field that reads as part of the
+   table rather than a box sitting inside it. */
+.cell-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--chip);
+    color: inherit;
+    font: inherit;
+    padding: 1px 2px;
+    text-align: right;
+    width: 100%;
+    min-width: 4.5em;
+}
+
+.cell-input:focus {
+    border-bottom-color: var(--accent);
+    outline: none;
+}
+
+.matrix-editor {
+    margin-top: 10px;
+}
+
+.matrix-head {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+}
+
+.matrix-name {
+    color: var(--accent);
+    font-size: .95rem;
+    font-weight: 600;
+}
+
+/* One cell per column, so the grid keeps the shape of the matrix it holds. */
+.matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--columns, 2), minmax(0, 3.6em));
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.matrix-cell {
+    border: 1px solid var(--chip);
+    border-radius: 4px;
+    min-width: 0;
+    padding: 3px 4px;
+    text-align: center;
+}
+
+.size-input {
+    width: 3.5em;
+}
+
+.matrix-answer {
+    margin-top: 10px;
+}
+
+.matrix-result {
+    width: auto;
+}
+
+.matrix-result td {
+    border: 1px solid var(--chip);
+    text-align: right;
+}
+
+.fit-line {
+    font-size: .82rem;
+    font-variant-numeric: tabular-nums;
+    margin: 8px 0 0;
+}
+
+.cell-error {
+    color: var(--error);
+}
+
+.series-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* The colour swatch doubles as the label, so a curve can be matched to its
+   field without a separate legend. */
+.series-label {
+    color: var(--plot-line);
+}
+
+
+.series-label[data-series-label="1"] { color: var(--plot-line-2); }
+.series-label[data-series-label="2"] { color: var(--plot-line-3); }
+.series-label[data-series-label="3"] { color: var(--plot-line-4); }
+
+/* Sizing belongs to the f(x) fields alone. On a table header, a width of
+   2.2em feeds the column algorithm and pins the Y columns narrow. */
+.field-inline .series-label {
+    width: 2.2em;
+    flex: none;
+    text-transform: none;
+    font-size: .85rem;
+}
+
+/* The region an integral measured, drawn under everything else and in the
+   colour of the curve it belongs to. */
+.plot-area {
+    fill: var(--plot-line);
+    fill-opacity: .22;
+    stroke: none;
+}
+
+.plot-area[data-graph-area="1"] { fill: var(--plot-line-2); }
+.plot-area[data-graph-area="2"] { fill: var(--plot-line-3); }
+.plot-area[data-graph-area="3"] { fill: var(--plot-line-4); }
+
+/* Scatter points from the Stats tab, drawn over the curves. */
+/* A chip that is a switch rather than a button, so its state has to show. */
+.chip.is-active {
+    background: var(--accent);
+    color: var(--equals-text);
+}
+
+.plot-point {
+    fill: var(--plot-line-3);
+    stroke: none;
+}
+
 .plot-marker {
     fill: var(--plot-line);
     stroke: var(--panel-text);
@@ -435,6 +719,9 @@ body {
     font-size: .8rem;
     text-align: center;
     max-width: 620px;
+    /* Generous, because the inline <kbd> boxes are taller than the text and
+       would otherwise touch the line above. */
+    line-height: 2.1;
 }
 
 .hint kbd {
@@ -442,13 +729,14 @@ body {
     background: var(--chip);
     border: 1px solid var(--key-border);
     border-radius: 3px;
-    padding: 1px 5px;
+    padding: 2px 6px;
+    white-space: nowrap;
 }
 
 @media (max-width: 640px) {
     .calculator-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-template-rows: minmax(104px, auto) repeat(8, 52px);
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-rows: minmax(104px, auto) repeat(9, 44px);
         width: min(100%, 340px);
     }
 

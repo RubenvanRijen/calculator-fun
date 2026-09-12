@@ -1,410 +1,265 @@
-import { Calculator } from "./calculator.js";
-import { isOperation } from "./expression.js";
-import { plot } from "./graph.js";
-import { loadState, saveState } from "./storage.js";
-import { applyTheme, otherTheme, preferredTheme } from "./theme.js";
-import type { CalculatorHandle } from "./interfaces/calculator-handle.js";
-import type { HistoryEntry } from "./interfaces/history-entry.js";
-import type { PlotResult } from "./interfaces/plot-result.js";
-import type { Theme } from "./types/theme.js";
-
-/** How long a key flashes when driven from the keyboard. */
-const FLASH_MS = 120;
-
-/** The SVG user-space the plot is drawn in. */
-const PLOT_WIDTH = 280;
-const PLOT_HEIGHT = 200;
+import { Calculator } from "@/calculator.ts";
+import { loadState, saveState } from "@/storage.ts";
+import { applyTheme, otherTheme, preferredTheme } from "@/theme.ts";
+import { Display } from "@/ui/display.ts";
+import { HistoryPanel } from "@/ui/history-panel.ts";
+import { RegisterPanel } from "@/ui/register-panel.ts";
+import { Keypad } from "@/ui/keypad.ts";
+import { setupGraphPanel } from "@/ui/graph-panel.ts";
+import { setupTablePanel } from "@/ui/table-panel.ts";
+import { setupStatsPanel } from "@/ui/stats-panel.ts";
+import { StatLists } from "@/stat-lists.ts";
+import { setupMatrixPanel } from "@/ui/matrix-panel.ts";
+import { MatrixStore } from "@/matrices.ts";
+import { FunctionSeries, SERIES_COUNT } from "@/function-series.ts";
+import type { EvalContext } from "@/interfaces/eval-context.ts";
+import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
+import type { Theme } from "@/types/theme.ts";
 
 /**
- * Bind a calculator to the buttons and display inside `root`.
+ * Wire the pieces together against the markup in `root`. This is a composition
+ * root and nothing else: each part below owns its own elements and behaviour,
+ * and this function only says how they are connected.
+ *
  * Exported so the wiring itself can be tested against a jsdom document.
  */
 export function setupCalculator(root: Document | HTMLElement): CalculatorHandle {
   const doc = root instanceof Document ? root : root.ownerDocument;
-  const query = <T extends HTMLElement>(selector: string): T | null =>
-    root.querySelector<T>(selector);
 
-  const expressionElement = query("[data-expression]");
-  const resultElement = query("[data-result]");
-  const errorElement = query("[data-error]");
-  const memoryIndicator = query("[data-memory-indicator]");
-  const parenIndicator = query("[data-paren-indicator]");
-  const historyList = query("[data-history-list]");
-  const historyEmpty = query("[data-history-empty]");
-
-  // strictNullChecks makes these `HTMLElement | null`, so the missing-markup
-  // case has to be dealt with rather than blowing up later on `.textContent`.
-  if (!expressionElement || !resultElement) {
-    throw new Error(
-      "Calculator markup is missing [data-expression] or [data-result]."
-    );
-  }
+  // Every listener is registered against this signal, so destroy() is a single
+  // abort rather than a list that drifts out of date. `root` and `doc` outlive
+  // the markup, so a stale handler would keep writing state to storage.
+  const listeners = new AbortController();
+  const signal = listeners.signal;
 
   const calculator = new Calculator();
+  const display = new Display(root);
 
-  // --- persistence & theme ------------------------------------------------
+  // --- persistence and theme ----------------------------------------------
   const saved = loadState();
-  calculator.restore(saved.history ?? [], saved.memory ?? 0);
+  calculator.restore(saved);
+  calculator.angleMode = saved.angleMode ?? "rad";
+
+  // Declared up here because persist() writes it out, and a const used before
+  // its line would be a crash waiting for someone to move a call.
+  const lists = new StatLists(saved.lists ?? []);
+  const matrices = new MatrixStore(saved.matrices ?? {});
 
   let theme: Theme = saved.theme ?? preferredTheme();
-  const themeIcon = query("[data-theme-icon]");
+  const themeIcon = root.querySelector<HTMLElement>("[data-theme-icon]");
+
   const applyCurrentTheme = (): void => {
     applyTheme(theme, doc.documentElement);
     if (themeIcon) themeIcon.textContent = theme === "dark" ? "☀" : "☾";
   };
-  applyCurrentTheme();
 
   const persist = (): void => {
-    saveState({ history: calculator.history, memory: calculator.memory, theme });
-  };
-
-  // --- display ------------------------------------------------------------
-  const buttonsByLabel = new Map<string, HTMLElement>();
-  for (const button of root.querySelectorAll<HTMLElement>("button")) {
-    const label = button.textContent?.trim();
-    if (label && !buttonsByLabel.has(label)) buttonsByLabel.set(label, button);
-  }
-
-  const updateDisplay = (): void => {
-    expressionElement.textContent = calculator.expressionDisplay;
-    resultElement.textContent = calculator.resultDisplay;
-
-    if (errorElement) {
-      errorElement.textContent = calculator.error ?? "";
-      errorElement.hidden = calculator.error === null;
-    }
-    if (memoryIndicator) memoryIndicator.hidden = !calculator.hasMemory;
-    if (parenIndicator) {
-      const open = calculator.openParenCount;
-      parenIndicator.hidden = open === 0;
-      parenIndicator.textContent = `( ${open}`;
-    }
-    renderHistory();
-    persist();
-  };
-
-  function renderHistory(): void {
-    if (!historyList) return;
-    const entries = calculator.history;
-    if (historyEmpty) historyEmpty.hidden = entries.length > 0;
-    historyList.replaceChildren(...entries.map(renderHistoryEntry));
-  }
-
-  function renderHistoryEntry(entry: HistoryEntry): HTMLElement {
-    const item = doc.createElement("li");
-
-    // A button, not a bare <li>, so the entry is reachable by keyboard too.
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "history-entry";
-
-    const expression = doc.createElement("span");
-    expression.className = "history-expression";
-    expression.textContent = entry.expression;
-
-    const result = doc.createElement("span");
-    result.className = "history-result";
-    result.textContent = entry.result;
-
-    button.append(expression, result);
-    button.addEventListener("click", () => {
-      calculator.recall(entry.result);
-      updateDisplay();
+    saveState({
+      history: calculator.history,
+      memory: calculator.memory,
+      theme,
+      angleMode: calculator.angleMode,
+      lastAnswer: calculator.lastAnswer,
+      entries: calculator.entries,
+      registers: calculator.registers,
+      lists: lists.rows(),
+      matrices: { A: matrices.get("A"), B: matrices.get("B") },
     });
-
-    item.append(button);
-    return item;
-  }
-
-  function flash(label: string): void {
-    const button = buttonsByLabel.get(label);
-    if (!button) return;
-    button.classList.add("is-pressed");
-    setTimeout(() => button.classList.remove("is-pressed"), FLASH_MS);
-  }
-
-  // --- keypad -------------------------------------------------------------
-  const on = (selector: string, handler: (element: HTMLElement) => void): void => {
-    for (const element of root.querySelectorAll<HTMLElement>(selector)) {
-      element.addEventListener("click", () => {
-        handler(element);
-        updateDisplay();
-      });
-    }
   };
 
-  on("[data-number]", (button) =>
-    calculator.appendNumber(button.dataset["number"] ?? button.textContent ?? "")
-  );
-  on("[data-operation]", (button) => {
-    const operation = button.dataset["operation"] ?? "";
-    if (isOperation(operation)) calculator.chooseOperation(operation);
+  // --- the parts ----------------------------------------------------------
+  const historyPanel = new HistoryPanel(root, doc, signal, (value) => {
+    calculator.recall(value);
+    update();
   });
-  on("[data-memory]", (button) => {
-    switch (button.dataset["memory"]) {
-      case "add": calculator.memoryAdd(); break;
-      case "subtract": calculator.memorySubtract(); break;
-      case "recall": calculator.memoryRecall(); break;
-      case "clear": calculator.memoryClear(); break;
-    }
-  });
-  on("[data-function]", (button) =>
-    calculator.appendFunction(button.dataset["function"] ?? "")
-  );
-  on("[data-constant]", (button) =>
-    calculator.appendConstant(button.dataset["constant"] ?? "")
-  );
-  on("[data-equals]", () => calculator.compute());
-  on("[data-all-clear]", () => calculator.clear());
-  on("[data-delete]", () => calculator.delete());
-  on("[data-sign]", () => calculator.toggleSign());
-  on("[data-percent]", () => calculator.percent());
-  on("[data-square]", () => calculator.square());
-  on("[data-reciprocal]", () => calculator.reciprocal());
-  on("[data-open-paren]", () => calculator.openParen());
-  on("[data-close-paren]", () => calculator.closeParen());
-  on("[data-history-clear]", () => calculator.clearHistory());
 
-  // --- theme toggle -------------------------------------------------------
-  query("[data-theme-toggle]")?.addEventListener("click", () => {
-    theme = otherTheme(theme);
-    applyCurrentTheme();
+  const registerPanel = new RegisterPanel(root, doc, signal, calculator, () => update());
+
+  /** What the graph reads besides the expressions themselves. */
+  let plottedContext = "";
+
+  function update(): void {
+    display.render(calculator);
+    historyPanel.render(calculator);
+    registerPanel.render();
+
+    // A stored value is part of what "A*x" means, so changing one makes a
+    // shaded area the answer to a curve that is no longer on the chart.
+    const context = JSON.stringify(graphContext());
+    if (context !== plottedContext) {
+      plottedContext = context;
+      graph.forgetArea();
+    }
+    // "Ans*x" is plotted and tabulated against the last answer, so pressing =
+    // changes what those two panels should be showing. Each render is a no-op
+    // while its own panel is hidden, so this costs nothing on the History tab.
+    graph.render();
+    table.render();
     persist();
+  }
+
+  const keypad = new Keypad(root, doc, calculator, signal, update);
+  // The graph and the table are two views of one set of functions, so the
+  // expressions live outside both of them.
+  const series = new FunctionSeries(
+    // Keyed by the attribute, the way the panel looks them up. Reading them in
+    // document order would put Y3's text into Y2 the day the markup is
+    // reordered, and the panel would then disagree with the model.
+    Array.from({ length: SERIES_COUNT }, (_, index) =>
+      root.querySelector<HTMLInputElement>(`[data-graph-input="${index}"]`)?.value ?? ""
+    )
+  );
+  const graphContext = (): EvalContext => ({
+    registers: calculator.registers,
+    ans: calculator.lastAnswer ?? undefined,
+  });
+  // Whether the graph is showing the statistics data. The points themselves
+  // are read from the lists each time rather than copied, so editing a cell
+  // moves its point and clearing the lists takes the scatter with it -- a
+  // snapshot would go on showing data that had been deleted.
+  let plottingData = false;
+  const scatterToggle = root.querySelector<HTMLElement>("[data-graph-scatter]");
+
+  const graph = setupGraphPanel(
+    root, doc, signal, series, graphContext,
+    () => (plottingData ? lists.pairs() : [])
+  );
+  const table = setupTablePanel(root, doc, signal, series, graphContext);
+
+  /**
+   * Turn the scatter on or off.
+   *
+   * It needs an off: while data is on the chart the window frames the data,
+   * so an ordinary curve is drawn against the data's scale and can end up far
+   * off the top of the box. Without this the only ways back would be deleting
+   * the data or reloading the page.
+   */
+  function showScatter(on: boolean): void {
+    plottingData = on;
+    scatterToggle?.classList.toggle("is-active", on);
+    scatterToggle?.setAttribute("aria-pressed", String(on));
+    graph.render();
+  }
+
+  scatterToggle?.addEventListener("click", () => {
+    showScatter(!plottingData);
+  }, { signal });
+
+  const stats = setupStatsPanel(root, doc, signal, lists, (fit) => {
+
+    // Fit the window to the data, or the points land off the edge of whatever
+    // range was left over from the last thing plotted.
+    const xs = lists.pairs().map((point) => point.x);
+    const margin = Math.max((Math.max(...xs) - Math.min(...xs)) * 0.1, 1);
+    const minInput = root.querySelector<HTMLInputElement>("[data-graph-min]");
+    const maxInput = root.querySelector<HTMLInputElement>("[data-graph-max]");
+    if (minInput) minInput.value = String(parseFloat((Math.min(...xs) - margin).toPrecision(6)));
+    if (maxInput) maxInput.value = String(parseFloat((Math.max(...xs) + margin).toPrecision(6)));
+
+    // The fit goes in the first free slot, so a curve already being looked at
+    // is not overwritten by pressing plot.
+    const free = series.all().findIndex((expression) => expression === "");
+    series.set(free === -1 ? SERIES_COUNT - 1 : free, fit);
+
+    showScatter(true);
+    showTab("graph");
   });
 
-  // --- keyboard -----------------------------------------------------------
-  function applyKey(key: string): string | null {
-    if (/^[0-9]$/.test(key) || key === ".") {
-      calculator.appendNumber(key);
-      return key;
-    }
-    // "/" is what a keyboard offers; the button is labelled "÷".
-    const operation = key === "/" ? "÷" : key;
-    if (isOperation(operation)) {
-      calculator.chooseOperation(operation);
-      return operation === "^" ? "xⁿ" : operation;
-    }
-    switch (key) {
-      case "Enter":
-      case "=":
-        calculator.compute();
-        return "=";
-      case "Backspace":
-        calculator.delete();
-        return "DEL";
-      case "Escape":
-        calculator.clear();
-        return "AC";
-      case "%":
-        calculator.percent();
-        return "%";
-      case "(":
-        calculator.openParen();
-        return "(";
-      case ")":
-        calculator.closeParen();
-        return ")";
-      default:
-        return null;
-    }
-  }
+  // Anything clicked outside the keypad -- a tab, a history entry, the theme
+  // toggle, a graph chip -- also spends a pending 2nd. Otherwise the shift
+  // stays latched across the detour and the next key runs its alternate,
+  // which for MC means wiping the history instead of the memory.
+  root.addEventListener(
+    "click",
+    (event) => {
+      // A pointer click leaves focus on whatever button it hit. The keypad
+      // clears that for its own keys; without the same treatment here, a click
+      // on a history entry, a tab or the theme toggle leaves a button focused
+      // and the keyboard handler then hands every Enter to it -- so Enter
+      // silently stops computing.
+      if (event instanceof MouseEvent && event.detail > 0) {
+        const button =
+          event.target instanceof Element ? event.target.closest("button") : null;
+        button?.blur();
+      }
 
-  function handleKeydown(event: KeyboardEvent): void {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const inKeypad =
+        event.target instanceof Element && event.target.closest("[data-keypad]") !== null;
+      if (inKeypad) return;
+      if (keypad.spendShift()) update();
+    },
+    { signal }
+  );
 
-    // Typing into the graph input must not drive the keypad.
-    const active = doc.activeElement;
-    if (active instanceof HTMLInputElement) return;
+  root.querySelector<HTMLElement>("[data-theme-toggle]")?.addEventListener(
+    "click",
+    () => {
+      theme = otherTheme(theme);
+      applyCurrentTheme();
+      persist();
+    },
+    { signal }
+  );
 
-    // A focused button handles Enter and Space itself; intercepting here would
-    // fire the action twice.
-    if (
-      (event.key === "Enter" || event.key === " ") &&
-      active instanceof HTMLButtonElement
-    ) {
-      return;
-    }
-
-    const label = applyKey(event.key);
-    if (label === null) return;
-
-    event.preventDefault();
-    flash(label);
-    updateDisplay();
-  }
-
-  doc.addEventListener("keydown", handleKeydown);
+  root.querySelector<HTMLElement>("[data-history-clear]")?.addEventListener(
+    "click",
+    () => {
+      calculator.clearHistory();
+      update();
+    },
+    { signal }
+  );
 
   // --- tabs ---------------------------------------------------------------
   const tabs = [...root.querySelectorAll<HTMLElement>("[data-tab]")];
   const panels = [...root.querySelectorAll<HTMLElement>("[data-panel]")];
+  /** What to do when a panel becomes visible, keyed by its name. */
+  // No redraw here: the lists can only be edited from the Stats tab, so the
+  // graph is never on screen when they change, and showing it renders it.
+  lists.onChange(persist, signal);
+  matrices.onChange(persist, signal);
+
+  const matrixPanel = setupMatrixPanel(root, doc, signal, matrices);
+
+  const onShow: Record<string, () => void> = {
+    graph: graph.render,
+    table: table.render,
+    stats: stats.render,
+    matrix: matrixPanel.render,
+  };
+
+  /** Show one tab's panel and hide the rest. */
+  function showTab(name: string): void {
+    for (const other of tabs) {
+      const active = other.dataset["tab"] === name;
+      other.classList.toggle("is-active", active);
+      other.setAttribute("aria-selected", String(active));
+    }
+    for (const panel of panels) {
+      panel.hidden = panel.dataset["panel"] !== name;
+    }
+    onShow[name]?.();
+  }
+
   for (const tab of tabs) {
-    tab.addEventListener("click", () => {
-      const name = tab.dataset["tab"];
-      for (const other of tabs) {
-        const active = other === tab;
-        other.classList.toggle("is-active", active);
-        other.setAttribute("aria-selected", String(active));
-      }
-      for (const panel of panels) {
-        panel.hidden = panel.dataset["panel"] !== name;
-      }
-      if (name === "graph") renderGraph();
-    });
+    tab.addEventListener(
+      "click",
+      () => {
+        const name = tab.dataset["tab"];
+        if (name !== undefined) showTab(name);
+      },
+      { signal }
+    );
   }
 
-  // --- graph --------------------------------------------------------------
-  const graphInput = query<HTMLInputElement>("[data-graph-input]");
-  const graphMin = query<HTMLInputElement>("[data-graph-min]");
-  const graphMax = query<HTMLInputElement>("[data-graph-max]");
-  const graphSvg = root.querySelector<SVGSVGElement>("[data-graph-svg]");
-  const graphError = query("[data-graph-error]");
-  const graphReadout = query("[data-graph-readout]");
-
-  let lastPlot: PlotResult | null = null;
-  let lastRange: { xMin: number; xMax: number } = { xMin: -10, xMax: 10 };
-
-  function renderGraph(): void {
-    if (!graphSvg) return;
-
-    const expression = graphInput?.value ?? "";
-    const xMin = readNumber(graphMin, -10);
-    const xMax = readNumber(graphMax, 10);
-    const result = plot(expression, xMin, xMax);
-
-    lastPlot = result;
-    lastRange = { xMin, xMax };
-
-    if (graphError) {
-      graphError.textContent = result.error ?? "";
-      graphError.hidden = result.error === null;
-    }
-
-    graphSvg.replaceChildren();
-    const svgNs = "http://www.w3.org/2000/svg";
-
-    const toScreenX = (x: number): number =>
-      ((x - xMin) / (xMax - xMin)) * PLOT_WIDTH;
-    const toScreenY = (y: number): number =>
-      PLOT_HEIGHT - ((y - result.yMin) / (result.yMax - result.yMin)) * PLOT_HEIGHT;
-
-    // Axes, drawn only where they fall inside the visible range.
-    if (xMin < 0 && xMax > 0) {
-      const axis = doc.createElementNS(svgNs, "line");
-      axis.setAttribute("x1", String(toScreenX(0)));
-      axis.setAttribute("x2", String(toScreenX(0)));
-      axis.setAttribute("y1", "0");
-      axis.setAttribute("y2", String(PLOT_HEIGHT));
-      axis.setAttribute("class", "plot-axis");
-      graphSvg.append(axis);
-    }
-    if (result.yMin < 0 && result.yMax > 0) {
-      const axis = doc.createElementNS(svgNs, "line");
-      axis.setAttribute("x1", "0");
-      axis.setAttribute("x2", String(PLOT_WIDTH));
-      axis.setAttribute("y1", String(toScreenY(0)));
-      axis.setAttribute("y2", String(toScreenY(0)));
-      axis.setAttribute("class", "plot-axis");
-      graphSvg.append(axis);
-    }
-
-    for (const segment of result.segments) {
-      const path = doc.createElementNS(svgNs, "path");
-      const d = segment
-        .map((point, index) =>
-          `${index === 0 ? "M" : "L"}${toScreenX(point.x).toFixed(2)} ${toScreenY(point.y).toFixed(2)}`
-        )
-        .join(" ");
-      path.setAttribute("d", d);
-      path.setAttribute("class", "plot-line");
-      graphSvg.append(path);
-    }
-
-    const marker = doc.createElementNS(svgNs, "circle");
-    marker.setAttribute("r", "3.5");
-    marker.setAttribute("class", "plot-marker");
-    marker.setAttribute("data-graph-marker", "");
-    marker.setAttribute("visibility", "hidden");
-    graphSvg.append(marker);
-
-    if (graphReadout) graphReadout.textContent = "";
-  }
-
-  function traceAt(ratio: number): void {
-    if (!graphSvg || !lastPlot || lastPlot.segments.length === 0) return;
-
-    const { xMin, xMax } = lastRange;
-    const x = xMin + ratio * (xMax - xMin);
-
-    // Find the sampled point nearest the pointer.
-    let nearest = null;
-    let bestDistance = Infinity;
-    for (const segment of lastPlot.segments) {
-      for (const point of segment) {
-        const distance = Math.abs(point.x - x);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          nearest = point;
-        }
-      }
-    }
-    if (!nearest) return;
-
-    const marker = graphSvg.querySelector("[data-graph-marker]");
-    if (marker) {
-      const screenX = ((nearest.x - xMin) / (xMax - xMin)) * PLOT_WIDTH;
-      const screenY =
-        PLOT_HEIGHT -
-        ((nearest.y - lastPlot.yMin) / (lastPlot.yMax - lastPlot.yMin)) * PLOT_HEIGHT;
-      marker.setAttribute("cx", screenX.toFixed(2));
-      marker.setAttribute("cy", screenY.toFixed(2));
-      marker.setAttribute("visibility", "visible");
-    }
-    if (graphReadout) {
-      graphReadout.textContent = `x = ${trim(nearest.x)}   ƒ(x) = ${trim(nearest.y)}`;
-    }
-  }
-
-  graphSvg?.addEventListener("pointermove", (event) => {
-    const bounds = graphSvg.getBoundingClientRect();
-    if (bounds.width === 0) return;
-    traceAt((event.clientX - bounds.left) / bounds.width);
-  });
-  graphSvg?.addEventListener("pointerleave", () => {
-    graphSvg.querySelector("[data-graph-marker]")?.setAttribute("visibility", "hidden");
-    if (graphReadout) graphReadout.textContent = "";
-  });
-
-  graphInput?.addEventListener("input", renderGraph);
-  graphMin?.addEventListener("input", renderGraph);
-  graphMax?.addEventListener("input", renderGraph);
-  on("[data-graph-example]", (button) => {
-    if (graphInput) graphInput.value = button.dataset["graphExample"] ?? "";
-    renderGraph();
-  });
-
-  updateDisplay();
+  applyCurrentTheme();
+  update();
 
   return {
     calculator,
-    destroy: () => doc.removeEventListener("keydown", handleKeydown),
+    actionNames: keypad.actionNames,
+    destroy: () => listeners.abort(),
   };
-}
-
-/**
- * An emptied <input type="number"> reads as "", not null, so `??` would never
- * reach the fallback and Number("") would silently become 0.
- */
-function readNumber(input: HTMLInputElement | null, fallback: number): number {
-  const raw = input?.value.trim();
-  if (raw === undefined || raw === "") return fallback;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : fallback;
-}
-
-/** Short, readable numbers for the trace readout. */
-function trim(value: number): string {
-  return parseFloat(value.toPrecision(4)).toString();
 }
 
 // Only run against a real page; importing this module in a test must not

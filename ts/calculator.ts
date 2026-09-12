@@ -1,174 +1,439 @@
-import { evaluateString, isOperation } from "./expression.js";
-import type { Operation } from "./types/operation.js";
-import type { HistoryEntry } from "./interfaces/history-entry.js";
+import { evaluateString, isOperation, toRpn, tokenize } from "@/expression.ts";
+import { evaluateExactRpn } from "@/exact-evaluator.ts";
+import {
+  isInteger as isExactInteger,
+  toDisplay as toExactDisplay,
+  toExpression as toExactExpression,
+  toMixedDisplay,
+} from "@/exact.ts";
+import type { ExactValue } from "@/interfaces/exact-value.ts";
+import { ExpressionBuffer } from "@/expression-buffer.ts";
+import { HistoryLog } from "@/history-log.ts";
+import { MemoryRegister } from "@/memory-register.ts";
+import {
+  balanceParentheses,
+  expectsOperand,
+  trailingOperatorLength,
+  formatExpression,
+  formatExpressionWithCursor,
+  formatOperand,
+  roundResult,
+  trailingOperation,
+} from "@/format.ts";
+import type { Operation } from "@/types/operation.ts";
+import type { HistoryEntry } from "@/interfaces/history-entry.ts";
+import type { AngleMode } from "@/types/angle-mode.ts";
+import type { RegisterName } from "@/types/register-name.ts";
 
-/** How many past calculations to keep. Oldest are dropped beyond this. */
-const MAX_HISTORY = 50;
-
-/** Characters after which a "-" reads as a sign rather than a subtraction. */
-const OPERATOR_CHARACTERS = "+-*÷^(";
-
-/**
- * Binary floating point makes 0.1 + 0.2 come out as 0.30000000000000004.
- * Twelve significant digits is well inside a double's ~15-17 digits of
- * precision, so this trims the noise without changing any honest result.
- */
-function roundResult(value: number): number {
-  if (!Number.isFinite(value)) return value;
-  return parseFloat(value.toPrecision(12));
-}
-
-/** True when a "-" appended to `text` would be a sign, not a subtraction. */
-function expectsOperand(text: string): boolean {
-  if (text === "") return true;
-  const last = text[text.length - 1] ?? "";
-  return OPERATOR_CHARACTERS.includes(last);
-}
-
-/** Close any parentheses the user left open, so "sqrt(9" still evaluates. */
-function balanceParentheses(expression: string): string {
-  let depth = 0;
-  for (const character of expression) {
-    if (character === "(") depth += 1;
-    else if (character === ")") depth -= 1;
-  }
-  return depth > 0 ? expression + ")".repeat(depth) : expression;
-}
+/** How many past expressions the up/down arrows can walk back through. */
+const MAX_ENTRIES = 50;
 
 /**
- * The calculator's state machine. It holds no reference to the DOM, so it can
- * be driven straight from a test; index.ts is what binds it to the buttons.
+ * The calculator, as a facade over four collaborators: the expression being
+ * typed, the history, the memory register and the formatting rules. It holds
+ * no reference to the DOM, so it can be driven straight from a test; index.ts
+ * is what binds it to the buttons.
  *
  * The expression is kept as text and handed to the parser, which is what lets
  * precedence and parentheses work: 2 + 3 * 4 is 14, not 20.
  */
+/** Entry templates, which delete as one thing until they are typed into. */
+const TEMPLATES: readonly string[] = ["(/)", "(+/)"];
+
 export class Calculator {
-  /** The expression as typed, e.g. "12+3*4". */
-  expression = "";
+  readonly #buffer = new ExpressionBuffer();
+  readonly #history = new HistoryLog();
+  readonly #memory = new MemoryRegister();
 
   /** Set when the last action could not be completed. Cleared on next input. */
   error: string | null = null;
 
-  /** The memory register, as used by the MC/MR/M+/M- keys. */
-  memory = 0;
-
-  #history: HistoryEntry[] = [];
+  #angleMode: AngleMode = "rad";
   #result: string | null = null;
   #preview = "";
   #justComputed = false;
   /** The trailing "+3" of the last sum, so "=" can be pressed again. */
   #repeatTail: string | null = null;
+  /**
+   * The last computed value, kept apart from #result because it has to outlive
+   * AC: on the hardware Ans survives a clear the way memory does.
+   */
+  #lastAnswer: number | null = null;
+  /** How the last result reads exactly, when it has an exact form. */
+  #exact: string | null = null;
+  /** The same value, kept so it can be carried forward without rounding. */
+  #exactValue: ExactValue | null = null;
+  /** Values stored under A, B, C and D. */
+  #registers: Partial<Record<RegisterName, number>> = {};
+  /** Whether the display is showing the exact form rather than the decimal. */
+  #showingExact = true;
+  /** Whether the entry being typed used the mixed-number key. */
+  #usedMixed = false;
+  /** Whether the answer on screen should be written as a mixed number. */
+  #showingMixed = false;
+  /** Expressions that were computed, oldest first, for up/down recall. */
+  #entries: string[] = [];
+  /** Where in #entries the user is; equal to its length when not browsing. */
+  #entryIndex = 0;
+
+  /** The expression as typed, e.g. "12+3*4". */
+  get expression(): string {
+    return this.#buffer.text;
+  }
 
   /** Past calculations, most recent first. */
   get history(): readonly HistoryEntry[] {
-    return this.#history;
+    return this.#history.entries;
+  }
+
+  /** The memory register, as used by the MC/MR/M+/M- keys. */
+  get memory(): number {
+    return this.#memory.value;
+  }
+
+  set memory(value: number) {
+    this.#memory.value = value;
   }
 
   /** Whether the display should show its "M" indicator. */
   get hasMemory(): boolean {
-    return this.memory !== 0;
+    return !this.#memory.isEmpty;
   }
 
-  /** Restore history and memory from a previous visit. */
-  restore(history: readonly HistoryEntry[], memory: number): void {
-    this.#history = [...history].slice(0, MAX_HISTORY);
-    this.memory = memory;
+  /** How trigonometry reads its arguments. Survives AC, like memory. */
+  get angleMode(): AngleMode {
+    return this.#angleMode;
   }
 
-  /** Reset the current entry. Memory and history deliberately survive. */
+  /**
+   * Setting it re-evaluates the preview: otherwise the display would keep
+   * showing a value worked out in the previous mode, and M+ would bank it.
+   */
+  set angleMode(mode: AngleMode) {
+    this.#angleMode = mode;
+    this.#refreshPreview();
+  }
+
+  /** What is stored under each letter. */
+  get registers(): Readonly<Partial<Record<RegisterName, number>>> {
+    return this.#registers;
+  }
+
+  /** Store the value currently on the display under `name`. */
+  store(name: RegisterName): void {
+    const value = this.#displayedValue();
+    if (value === null) {
+      this.error = "Nothing to store";
+      return;
+    }
+    this.error = null;
+    this.#registers = { ...this.#registers, [name]: value };
+    // What is on screen may depend on this register.
+    this.#refreshPreview();
+  }
+
+  /** Forget what is stored under `name`. */
+  clearRegister(name: RegisterName): void {
+    const next = { ...this.#registers };
+    delete next[name];
+    this.#registers = next;
+    this.#refreshPreview();
+  }
+
+  /** Insert a reference to a stored value. */
+  appendRegister(name: RegisterName): void {
+    this.#beginFreshEntry();
+    this.#buffer.push(name);
+    this.#refreshPreview();
+  }
+
+  /**
+   * Insert a random number. The value is fixed at the moment the key is
+   * pressed rather than re-rolled on every evaluation, so the live preview
+   * does not flicker and the answer matches what was on screen.
+   */
+  appendRandom(): void {
+    this.insert(Math.random().toFixed(6));
+  }
+
+  /** How many parentheses are still open, for the display indicator. */
+  get openParenCount(): number {
+    return this.#buffer.openDepth;
+  }
+
+  /** Where the caret sits within `expression`. */
+  get cursor(): number {
+    return this.#buffer.cursor;
+  }
+
+  /** Move the caret one character left. Returns false when it could not. */
+  moveLeft(): boolean {
+    this.error = null;
+    this.#settleAfterCompute();
+    return this.#buffer.moveLeft();
+  }
+
+  /** Move the caret one character right. Returns false when it could not. */
+  moveRight(): boolean {
+    this.error = null;
+    this.#settleAfterCompute();
+    return this.#buffer.moveRight();
+  }
+
+  /** Step back through previously computed expressions. */
+  recallPrevious(): boolean {
+    if (this.#entries.length === 0) return false;
+    this.error = null;
+    this.#entryIndex = Math.max(0, this.#entryIndex - 1);
+    this.#loadEntry();
+    return true;
+  }
+
+  /** Step forward again; past the newest entry the expression is cleared. */
+  recallNext(): boolean {
+    if (this.#entries.length === 0) return false;
+    this.error = null;
+    this.#entryIndex = Math.min(this.#entries.length, this.#entryIndex + 1);
+    this.#loadEntry();
+    return true;
+  }
+
+  /**
+   * Start a fraction: inserts "(/)" with the caret between the brackets, so
+   * the numerator is typed, then the caret moved right past the slash for the
+   * denominator. Wrapping it keeps the fraction whole inside a larger sum.
+   */
+  appendFraction(): void {
+    this.#beginFreshEntry();
+    this.#buffer.push("(/)");
+    this.#buffer.moveLeft();
+    this.#buffer.moveLeft();
+    this.#refreshPreview();
+  }
+
+  /**
+   * Start the exponent of a number written in scientific notation.
+   *
+   * With a number to attach to, "e" is the exponent marker the parser already
+   * reads. With nothing to attach to it would be Euler's constant instead --
+   * so the key would quietly become a second pi/e key -- and "1e" is what was
+   * meant: ten to the power of whatever comes next.
+   */
+  appendExponent(): void {
+    this.#beginFreshEntry();
+    const before = this.#buffer.textBeforeCursor;
+    // One exponent per number. A second would read as Euler's constant --
+    // "1e1e3" is 81.5, not an error -- so there is nothing to warn about
+    // afterwards and the key simply does not take.
+    if (/[0-9.]e[+-]?[0-9]*$/i.test(before)) return;
+
+    this.#buffer.push(/[0-9.]$/.test(before) ? "e" : "1e");
+    this.#refreshPreview();
+  }
+
+  /**
+   * Start a mixed number: a whole part, then a fraction.
+   *
+   * Written out as the sum it is -- "(2+1/3)" -- because the expression line
+   * is plain text and this calculator multiplies by juxtaposition, so a
+   * space-separated "2 1/3" would read as 2 x 1/3. The arrows walk between the
+   * three places to type, and the answer comes back as a mixed number.
+   */
+  appendMixedFraction(): void {
+    this.#beginFreshEntry();
+    this.#buffer.push("(+/)");
+    this.#buffer.moveLeft();
+    this.#buffer.moveLeft();
+    this.#buffer.moveLeft();
+    this.#usedMixed = true;
+    this.#refreshPreview();
+  }
+
+  /** Append a factorial, which applies to the value already there. */
+  appendFactorial(): void {
+    this.error = null;
+    this.#continueFromResult();
+    if (this.#buffer.isEmptyBeforeCursor || this.#buffer.endsWithOperator) return;
+    this.#buffer.push("!");
+    this.#refreshPreview();
+  }
+
+  /** Insert a reference to the previous result. */
+  appendAns(): void {
+    this.#beginFreshEntry();
+    this.#buffer.push("ans");
+    this.#refreshPreview();
+  }
+
+  /**
+   * Bring back what a previous visit left. Taken as one object rather than a
+   * growing list of positional arguments, and so that a caller cannot restore
+   * the history while silently dropping the answer it refers to.
+   */
+  restore(state: {
+    history?: readonly HistoryEntry[] | undefined;
+    memory?: number | undefined;
+    lastAnswer?: number | null | undefined;
+    entries?: readonly string[] | undefined;
+    registers?: Readonly<Partial<Record<RegisterName, number>>> | undefined;
+  }): void {
+    this.#history.restore(state.history ?? []);
+    this.#memory.value = state.memory ?? 0;
+    this.#lastAnswer = state.lastAnswer ?? null;
+    this.#entries = [...(state.entries ?? [])].slice(-MAX_ENTRIES);
+    this.#entryIndex = this.#entries.length;
+    this.#registers = { ...(state.registers ?? {}) };
+  }
+
+  /** The value Ans refers to, for persistence. */
+  get lastAnswer(): number | null {
+    return this.#lastAnswer;
+  }
+
+  /** The expressions the arrows walk through, for persistence. */
+  get entries(): readonly string[] {
+    return this.#entries;
+  }
+
+  /** Reset the current entry. Memory, history and recall deliberately survive. */
   clear(): void {
-    this.expression = "";
+    this.#buffer.clear();
+    this.#entryIndex = this.#entries.length;
     this.error = null;
     this.#result = null;
     this.#preview = "";
+    this.#exact = null;
+    this.#exactValue = null;
+    this.#showingExact = true;
+    this.#usedMixed = false;
+    this.#showingMixed = false;
     this.#justComputed = false;
     this.#repeatTail = null;
   }
 
-  /** Remove the last character of the expression. */
+  /** Undo the last keypress. */
   delete(): void {
     this.error = null;
     if (this.#justComputed) {
       this.clear();
       return;
     }
-    this.expression = this.expression.slice(0, -1);
+
+    // A template nobody has typed into yet goes as a whole. Its own keypress
+    // put the caret inside it, which is what makes DELETE character-wise from
+    // then on -- and taking one bracket off "(+/)" leaves "+/)" behind to
+    // wreck whatever is typed next.
+    if (TEMPLATES.includes(this.#buffer.text)) {
+      this.#buffer.clear();
+      this.#refreshPreview();
+      return;
+    }
+
+    this.#buffer.pop();
     this.#refreshPreview();
   }
 
   /** Append a digit or the decimal point. */
   appendNumber(digit: string): void {
-    this.error = null;
-    if (this.#justComputed) {
-      this.expression = "";
-      this.#justComputed = false;
-    }
+    this.#beginFreshEntry();
     // Only one decimal point per number.
-    if (digit === "." && /[0-9.]*\.[0-9]*$/.test(this.expression)) return;
-    this.expression += digit;
+    // The rule is one point per *number*, so it has to see the digits on both
+    // sides of the caret: with "1|.5" there is already a point in this number.
+    // The raw run, because "5." is exactly the case this has to catch and it
+    // is not yet a number.
+    const run = this.#buffer.numberRunAtCursor?.literal ?? "";
+    if (digit === "." && run.includes(".")) return;
+    // An exponent is a whole number of tens, so a point after one would make
+    // "2e.5" -- which the parser reads as 2 x e x 0.5, a different sum
+    // entirely, and reports no error about.
+    if (digit === "." && /e/i.test(this.#buffer.textBeforeCursor.slice(run.length ? -run.length : 0))) {
+      return;
+    }
+    this.#buffer.push(digit);
     this.#refreshPreview();
   }
 
-  /** Append an operator, continuing from the last result where there is one. */
+  /**
+   * Append raw text that one keypress produced, e.g. "π" or "10^(". Supplies a
+   * multiplication when the text would otherwise glue onto the number being
+   * typed: 2 then the 10^ key means 2 x 10^n, not 210^n. Symbols such as "π"
+   * and "(e)" need no help -- the tokenizer implies that multiplication itself.
+   */
+  insert(text: string): void {
+    this.#beginFreshEntry();
+    const needsProduct =
+      /^[0-9]/.test(text) && /[0-9.)π]$/.test(this.#buffer.textBeforeCursor);
+    this.#buffer.push(needsProduct ? `*${text}` : text);
+    this.#refreshPreview();
+  }
+
+  /** Append a constant such as π. */
+  appendConstant(symbol: string): void {
+    this.insert(symbol);
+  }
+
+  /** Append a named function, ready for its argument, e.g. "sqrt(". */
+  appendFunction(name: string): void {
+    this.#beginFreshEntry();
+    this.#buffer.push(`${name}(`);
+    this.#refreshPreview();
+  }
+
+  /**
+   * Append an operator, continuing from the last result where there is one, so
+   * that 5 + 3 = then * 2 works on the 8.
+   */
   chooseOperation(operation: Operation): void {
     this.error = null;
     if (!isOperation(operation)) return;
+    this.#continueFromResult();
 
-    if (this.#justComputed && this.#result !== null) {
-      this.expression = this.#result;
-      this.#justComputed = false;
-    }
-    // A trailing "(" has nothing to operate on, so "(" then "+" would leave
-    // "(+", which can never evaluate.
-    if (this.expression === "" || this.expression.endsWith("(")) return;
+    const before = this.#buffer.textBeforeCursor;
+    const atStart = this.#buffer.isEmptyBeforeCursor || before.endsWith("(");
 
-    // Replace a trailing operator rather than stacking two.
-    if (this.#endsWithOperator()) {
-      this.expression = this.expression.slice(0, -1);
+    // A minus where an operand is expected is a sign, not a subtraction, so
+    // "-2^2" can be typed and reads as -(2^2). Every other operator has
+    // nothing to act on there.
+    if (atStart) {
+      if (operation === "-") {
+        this.#buffer.push("-");
+        this.#refreshPreview();
+      }
+      return;
     }
-    this.expression += operation;
+
+    // A lone sign is not something to build on either: "-" then "+" must not
+    // leave a leading "+".
+    if (before === "-") return;
+
+    // Replace a trailing operator rather than stacking two -- popOperator,
+    // because nCr is three characters, not one.
+    if (this.#buffer.endsWithOperator) this.#buffer.popOperator();
+    this.#buffer.push(operation);
     this.#refreshPreview();
   }
 
   /** Open a parenthesis. */
   openParen(): void {
-    this.error = null;
-    if (this.#justComputed) {
-      this.expression = "";
-      this.#justComputed = false;
-    }
-    this.expression += "(";
+    this.#beginFreshEntry();
+    this.#buffer.push("(");
     this.#refreshPreview();
   }
 
   /** Close a parenthesis, if there is one open to close. */
   closeParen(): void {
     this.error = null;
-    if (this.#openDepth() === 0) return;
-    if (expectsOperand(this.expression)) return;
-    this.expression += ")";
-    this.#refreshPreview();
-  }
-
-  /** Append a named function, ready for its argument, e.g. "sqrt(". */
-  appendFunction(name: string): void {
-    this.error = null;
-    if (this.#justComputed) {
-      this.expression = "";
-      this.#justComputed = false;
+    // Both counts matter: there has to be a "(" before the caret to close, and
+    // the expression as a whole has to have one still unclosed -- otherwise a
+    // ")" typed mid-expression closes a bracket that is already matched.
+    if (
+      this.#buffer.openDepthBeforeCursor === 0 ||
+      this.#buffer.openDepth === 0 ||
+      this.#buffer.expectsOperand
+    ) {
+      return;
     }
-    this.expression += `${name}(`;
-    this.#refreshPreview();
-  }
-
-  /** Append a constant such as π. */
-  appendConstant(symbol: string): void {
-    this.error = null;
-    if (this.#justComputed) {
-      this.expression = "";
-      this.#justComputed = false;
-    }
-    this.expression += symbol;
+    this.#buffer.push(")");
     this.#refreshPreview();
   }
 
@@ -185,7 +450,7 @@ export class Calculator {
   /** Load a value straight into the display, as MR and history clicks do. */
   recall(value: string): void {
     this.error = null;
-    this.expression = value;
+    this.#buffer.replace(value);
     this.#justComputed = false;
     this.#refreshPreview();
   }
@@ -193,21 +458,25 @@ export class Calculator {
   /** Flip the sign of the number currently being typed. */
   toggleSign(): void {
     this.error = null;
-    if (this.#justComputed && this.#result !== null) {
-      this.expression = this.#result;
-      this.#justComputed = false;
-    }
+    this.#continueFromResult();
 
-    const match = /(\d*\.?\d+)$/.exec(this.expression);
-    if (match?.[1] === undefined) return;
+    // An exponent with nothing in it yet is what the sign key is reaching
+    // for: the number run stops at the "e", so without this the key does
+    // nothing at all at "2e", which is exactly where it is wanted.
+    if (this.#toggleExponentSign()) return;
 
-    const literal = match[1];
-    const before = this.expression.slice(0, this.expression.length - literal.length);
+    const number = this.#buffer.numberAtCursor ?? this.#buffer.wholeGroup;
+    if (number === null) return;
 
-    if (before.endsWith("-") && expectsOperand(before.slice(0, -1))) {
-      this.expression = before.slice(0, -1) + literal;
+    const { literal, start, end } = number;
+    const before = this.#buffer.text.slice(0, start);
+    const isAlreadyNegated =
+      before.endsWith("-") && expectsOperand(before.slice(0, -1));
+
+    if (isAlreadyNegated) {
+      this.#buffer.replaceRange(start - 1, end, literal);
     } else {
-      this.expression = `${before}-${literal}`;
+      this.#buffer.replaceRange(start, end, `-${literal}`);
     }
     this.#refreshPreview();
   }
@@ -219,29 +488,25 @@ export class Calculator {
    */
   percent(): void {
     this.error = null;
-    if (this.#justComputed && this.#result !== null) {
-      this.expression = this.#result;
-      this.#justComputed = false;
-    }
+    this.#continueFromResult();
 
-    const match = /(\d*\.?\d+)$/.exec(this.expression);
-    if (match?.[1] === undefined) return;
+    const number = this.#buffer.numberAtCursor ?? this.#buffer.wholeGroup;
+    if (number === null) return;
 
-    const literal = match[1];
-    const start = this.expression.length - literal.length;
-    const before = this.expression.slice(0, start);
+    const { literal, start, end } = number;
+    const before = this.#buffer.text.slice(0, start);
     const operator = before[before.length - 1] ?? "";
 
     if ((operator === "+" || operator === "-") && before.length > 1) {
       const base = this.#tryEvaluate(before.slice(0, -1));
       if (base !== null) {
-        this.expression = `${before}(${base}*${literal}/100)`;
+        this.#buffer.replaceRange(start, end, `(${base}*${literal}/100)`);
         this.#refreshPreview();
         return;
       }
     }
 
-    this.expression = `${before}(${literal}/100)`;
+    this.#buffer.replaceRange(start, end, `(${literal}/100)`);
     this.#refreshPreview();
   }
 
@@ -250,7 +515,7 @@ export class Calculator {
     const value = this.#displayedValue();
     if (value === null) return;
     this.error = null;
-    this.memory = roundResult(this.memory + value);
+    this.#memory.add(value);
   }
 
   /** Subtract the displayed value from memory. */
@@ -258,22 +523,24 @@ export class Calculator {
     const value = this.#displayedValue();
     if (value === null) return;
     this.error = null;
-    this.memory = roundResult(this.memory - value);
+    this.#memory.subtract(value);
   }
 
   /** Copy memory into the display. */
   memoryRecall(): void {
-    this.recall(this.memory.toString());
+    this.recall(this.#memory.value.toString());
   }
 
   /** Empty the memory register. */
   memoryClear(): void {
-    this.memory = 0;
+    this.#memory.clear();
   }
 
-  /** Empty the history panel. */
+  /** Empty the history panel, and the entries the arrows walk through. */
   clearHistory(): void {
-    this.#history = [];
+    this.#history.clear();
+    this.#entries = [];
+    this.#entryIndex = 0;
   }
 
   /**
@@ -285,15 +552,27 @@ export class Calculator {
 
     if (this.#justComputed) {
       if (this.#repeatTail === null || this.#result === null) return;
-      this.expression = this.#result + this.#repeatTail;
+      // The same exact carry the operator keys get, so "1÷3= =" gives 1/9
+      // rather than 0.111111111111.
+      const carried =
+        this.#exactValue !== null && !isExactInteger(this.#exactValue)
+          ? toExactExpression(this.#exactValue)
+          : this.#repeatTail.startsWith("^") && this.#result.startsWith("-")
+            ? `(${this.#result})`
+            : this.#result;
+      this.#buffer.replace(carried + this.#repeatTail);
     }
 
-    const expression = balanceParentheses(this.expression);
+    const expression = this.#buffer.balanced;
     if (expression === "") return;
 
     let value: number;
     try {
-      value = evaluateString(expression);
+      value = evaluateString(expression, {
+        angleMode: this.#angleMode,
+        ans: this.#previousAnswer(),
+        registers: this.#registers,
+      });
     } catch (cause) {
       this.error = cause instanceof Error ? cause.message : "Invalid expression";
       return;
@@ -305,56 +584,200 @@ export class Calculator {
     }
 
     const result = roundResult(value).toString();
+    this.#exactValue = this.#exactValueOf(expression);
+    this.#exact = this.#displayableExact(this.#exactValue, result);
+    // An answer keeps the form of the question, as it does on the hardware:
+    // ask in fractions and get a fraction, ask in decimals and get a decimal.
+    // F<->D swaps either way.
+    this.#showingExact = !expression.includes(".");
+    // Same rule for the shape of the fraction: ask with a mixed number and
+    // the answer comes back as one.
+    this.#showingMixed = this.#usedMixed;
     this.#repeatTail = trailingOperation(expression);
-    this.#history.unshift({ expression: formatExpression(expression), result });
-    if (this.#history.length > MAX_HISTORY) this.#history.length = MAX_HISTORY;
+    // The history shows what the display showed, and recalls a form the
+    // parser can read back.
+    this.#history.add(
+      formatExpression(expression),
+      // What the display showed, mixed number and all. The recall value is
+      // separate and stays something the parser can read back.
+      this.#showingExact && this.#exact !== null
+        ? this.#mixedResult() ?? this.#exact
+        : result,
+      this.#exactValue !== null ? toExactExpression(this.#exactValue) : result
+    );
 
-    this.expression = expression;
+    // Keep the entry list free of consecutive duplicates, so pressing = twice
+    // does not fill it with the same line.
+    if (this.#entries[this.#entries.length - 1] !== expression) {
+      this.#entries.push(expression);
+      if (this.#entries.length > MAX_ENTRIES) this.#entries.shift();
+    }
+    this.#entryIndex = this.#entries.length;
+
+    this.#buffer.replace(expression);
     this.#result = result;
+    this.#lastAnswer = roundResult(value);
     this.#preview = result;
     this.#justComputed = true;
   }
 
   /** The expression as it should appear on the small upper line. */
   get expressionDisplay(): string {
-    if (this.#justComputed) return `${formatExpression(this.expression)} =`;
-    return formatExpression(this.expression);
+    const { text } = formatExpressionWithCursor(this.#buffer.text, this.#buffer.cursor);
+    return this.#justComputed ? `${text} =` : text;
+  }
+
+  /**
+   * Where the caret goes within `expressionDisplay`, or null when there should
+   * not be one -- a finished calculation is a result, not something being
+   * edited.
+   */
+  get displayCursor(): number | null {
+    if (this.#justComputed) return null;
+    return formatExpressionWithCursor(this.#buffer.text, this.#buffer.cursor).cursor;
   }
 
   /** The large lower line: the result, or a live preview while typing. */
   get resultDisplay(): string {
-    if (this.expression === "" && this.#result === null) return "";
+    if (this.#buffer.isEmpty && this.#result === null) return "";
+    if (this.#justComputed && this.#showingExact && this.#exact !== null) {
+      return this.#mixedResult() ?? this.#exact;
+    }
     return formatOperand(this.#preview);
   }
 
-  /** How many parentheses are still open, for the display indicator. */
-  get openParenCount(): number {
-    return this.#openDepth();
+  /**
+   * Set the sign of an exponent that has not been typed yet.
+   *
+   * Only while it is still empty. Once there are digits in it the number is a
+   * number again, and the sign key means what it always means: negating
+   * "1e-7" gives "-1e-7", not "1e7".
+   *
+   * Returns whether it did anything, so the caller can fall through.
+   */
+  #toggleExponentSign(): boolean {
+    const before = this.#buffer.textBeforeCursor;
+    const match = /[0-9.]e([+-]?)$/i.exec(before);
+    if (match === null) return false;
+
+    const sign = match[1] ?? "";
+    const from = before.length - sign.length;
+    this.#buffer.replaceRange(from, from + sign.length, sign === "-" ? "" : "-");
+    this.#refreshPreview();
+    return true;
+  }
+
+  /** The answer as a mixed number, when one was asked for and one exists. */
+  #mixedResult(): string | null {
+    if (!this.#showingMixed || this.#exactValue === null) return null;
+    return toMixedDisplay(this.#exactValue);
+  }
+
+  /** Whether there is an exact form to toggle to, for the F<->D key. */
+  get hasExactForm(): boolean {
+    return this.#justComputed && this.#exact !== null;
+  }
+
+  /** Whether the exact form is the one currently on screen. */
+  get isShowingExact(): boolean {
+    return this.hasExactForm && this.#showingExact;
+  }
+
+  /** Swap between the exact form and the decimal. */
+  toggleExact(): void {
+    if (!this.hasExactForm) return;
+    this.#showingExact = !this.#showingExact;
+  }
+
+  /**
+   * The exact reading of an expression, when it has one worth showing.
+   *
+   * A plain integer is skipped: 2 + 2 is 4 either way, and an "exact" badge on
+   * it would be noise. Anything the exact evaluator cannot represent, or that
+   * disagrees with the decimal, is skipped too -- the two must never show
+   * different numbers.
+   */
+  #exactValueOf(expression: string): ExactValue | null {
+    try {
+      return evaluateExactRpn(toRpn(tokenize(expression)), {
+        angleMode: this.#angleMode,
+        ans: this.#previousAnswer(),
+        registers: this.#registers,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Whether an exact value is worth showing.
+   *
+   * A form that reads the same as the decimal is skipped, which covers plain
+   * integers without needing a rule of its own: 2 + 2 is "4" both ways. Where
+   * they differ the exact form is shown, including the integer 0 that the
+   * float missed.
+   *
+   * Deliberately *not* cross-checked against the float. Where the two differ
+   * it is the float that has drifted -- sin(180^5 degrees) is exactly 0, while
+   * the float says -2.4e-7 -- so rejecting the exact value on disagreement
+   * would discard the correct answer in favour of the wrong one. A tolerance
+   * loose enough to accept that drift could not catch a real bug either. The
+   * exact path is guarded by its own tests instead.
+   */
+  #displayableExact(value: ExactValue | null, decimal: string): string | null {
+    if (value === null) return null;
+    const display = toExactDisplay(value);
+    return display === decimal ? null : display;
+  }
+
+  /** Clear the error and start a new expression when one has just finished. */
+  #beginFreshEntry(): void {
+    this.error = null;
+    if (this.#justComputed) {
+      this.#buffer.clear();
+      this.#justComputed = false;
+      // The shape of the last question says nothing about the next one.
+      this.#usedMixed = false;
+    }
+  }
+
+  /**
+   * Carry the last result into the expression, for keys that build on it.
+   * `bracketNegative` is for keys that append something binding tighter than
+   * unary minus: -7 then x^2 must be (-7)^2 = 49, not -(7^2) = -49.
+   */
+  #continueFromResult(bracketNegative = false): void {
+    if (!this.#justComputed || this.#result === null) return;
+
+    // A non-integer exact value is carried in a form the parser can read back,
+    // so continuing from a displayed 1/3 and multiplying by 3 gives exactly 1.
+    // It is already bracketed, so it needs no help with a negative. A plain
+    // integer is left to the decimal path below, which does handle that.
+    if (this.#exactValue !== null && !isExactInteger(this.#exactValue)) {
+      this.#buffer.replace(toExactExpression(this.#exactValue));
+      this.#justComputed = false;
+      return;
+    }
+
+    const carried =
+      bracketNegative && this.#result.startsWith("-")
+        ? `(${this.#result})`
+        : this.#result;
+    this.#buffer.replace(carried);
+    this.#justComputed = false;
   }
 
   #appendPower(exponent: string): void {
     this.error = null;
-    if (this.#justComputed && this.#result !== null) {
-      this.expression = this.#result;
-      this.#justComputed = false;
-    }
-    if (this.expression === "" || this.#endsWithOperator()) return;
-    this.expression += `^${exponent}`;
+    this.#continueFromResult(true);
+    // A power applies to the whole number the caret is in, not to the digits
+    // that happen to precede it: "1|2+3" then x^2 is 12^2, not 1^22.
+    const number = this.#buffer.numberAtCursor;
+    if (number !== null) this.#buffer.moveTo(number.end);
+
+    if (this.#buffer.isEmptyBeforeCursor || this.#buffer.endsWithOperator) return;
+    this.#buffer.push(`^${exponent}`);
     this.#refreshPreview();
-  }
-
-  #endsWithOperator(): boolean {
-    const last = this.expression[this.expression.length - 1] ?? "";
-    return "+-*÷^".includes(last) && this.expression.length > 0;
-  }
-
-  #openDepth(): number {
-    let depth = 0;
-    for (const character of this.expression) {
-      if (character === "(") depth += 1;
-      else if (character === ")") depth -= 1;
-    }
-    return Math.max(depth, 0);
   }
 
   /**
@@ -364,12 +787,17 @@ export class Calculator {
    */
   #refreshPreview(): void {
     this.#justComputed = false;
-    if (this.expression === "") {
+    if (this.#buffer.isEmpty) {
       this.#preview = "";
       return;
     }
-    const whole = balanceParentheses(this.expression);
-    const withoutTail = balanceParentheses(this.expression.replace(/[+\-*÷^]+$/, ""));
+    const whole = this.#buffer.balanced;
+    let stripped = this.#buffer.text;
+    for (let length = trailingOperatorLength(stripped); length > 0; ) {
+      stripped = stripped.slice(0, -length);
+      length = trailingOperatorLength(stripped);
+    }
+    const withoutTail = balanceParentheses(stripped);
     for (const candidate of [whole, withoutTail]) {
       const value = this.#tryEvaluate(candidate);
       if (value !== null) {
@@ -383,11 +811,37 @@ export class Calculator {
   #tryEvaluate(expression: string): string | null {
     if (expression === "") return null;
     try {
-      const value = evaluateString(expression);
+      const value = evaluateString(expression, {
+        angleMode: this.#angleMode,
+        ans: this.#previousAnswer(),
+        registers: this.#registers,
+      });
       return Number.isFinite(value) ? roundResult(value).toString() : null;
     } catch {
       return null;
     }
+  }
+
+  /** Load whichever entry #entryIndex points at; past the end, clear. */
+  #loadEntry(): void {
+    const entry = this.#entries[this.#entryIndex];
+    if (entry === undefined) {
+      this.#buffer.clear();
+    } else {
+      this.#buffer.replace(entry);
+    }
+    this.#justComputed = false;
+    this.#refreshPreview();
+  }
+
+  /** What Ans resolves to, or undefined before anything has been computed. */
+  #previousAnswer(): number | undefined {
+    return this.#lastAnswer ?? undefined;
+  }
+
+  /** After "=", the next edit continues from the balanced expression. */
+  #settleAfterCompute(): void {
+    if (this.#justComputed) this.#justComputed = false;
   }
 
   /** The number the memory keys act on: the preview, or the result. */
@@ -399,56 +853,10 @@ export class Calculator {
   }
 }
 
-/** The trailing "+3" of an expression, so "=" can repeat it. */
-export function trailingOperation(expression: string): string | null {
-  let depth = 0;
-  for (let index = expression.length - 1; index > 0; index -= 1) {
-    const character = expression[index] ?? "";
-    if (character === ")") depth += 1;
-    else if (character === "(") depth -= 1;
-    else if (depth === 0 && "+-*÷^".includes(character)) {
-      // Skip a sign rather than a genuine binary operator.
-      if (expectsOperand(expression.slice(0, index))) continue;
-      return expression.slice(index);
-    }
-  }
-  return null;
-}
-
-/** Space out binary operators so "12+3*4" reads as "12 + 3 * 4". */
-export function formatExpression(expression: string): string {
-  let out = "";
-  for (let index = 0; index < expression.length; index += 1) {
-    const character = expression[index] ?? "";
-    if ("+-*÷^".includes(character) && !expectsOperand(expression.slice(0, index))) {
-      out += ` ${character} `;
-    } else {
-      out += character;
-    }
-  }
-  return out.replace(/\s+/g, " ").trim();
-}
-
-/**
- * Format a result for display: group the integer part with thousands
- * separators while leaving the decimal part exactly as it is.
- */
-export function formatOperand(operand: string): string {
-  if (operand === "") return "";
-
-  // Exponential form has no integer/decimal split to group, and grouping it
-  // would render 1e-7 as "0". Show it as it is.
-  if (/[eE]/.test(operand)) return operand;
-
-  // noUncheckedIndexedAccess types both halves as `string | undefined`, which
-  // is what lets the trailing-decimal case below be handled honestly.
-  const [integerPart, decimalPart] = operand.split(".");
-  const integerDigits = parseFloat(integerPart ?? "");
-  const integerDisplay = isNaN(integerDigits)
-    ? ""
-    : integerDigits.toLocaleString("en", { maximumFractionDigits: 0 });
-
-  return decimalPart === undefined
-    ? integerDisplay
-    : `${integerDisplay}.${decimalPart}`;
-}
+/** Re-exported so existing importers keep working. */
+export {
+  formatExpression,
+  formatExpressionWithCursor,
+  formatOperand,
+  trailingOperation,
+} from "@/format.ts";

@@ -1,4 +1,4 @@
-import type { PlotSegment } from "../types/plot-segment.js";
+import type { PlotSegment } from "@/types/plot-segment.ts";
 
 /** The outcome of sampling a function across a range of x. */
 export interface PlotResult {

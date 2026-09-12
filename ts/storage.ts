@@ -1,6 +1,11 @@
-import type { PersistedState } from "./interfaces/persisted-state.js";
-import type { HistoryEntry } from "./interfaces/history-entry.js";
-import type { Theme } from "./types/theme.js";
+import type { PersistedState } from "@/interfaces/persisted-state.ts";
+import type { HistoryEntry } from "@/interfaces/history-entry.ts";
+import type { Theme } from "@/types/theme.ts";
+import type { AngleMode } from "@/types/angle-mode.ts";
+import type { RegisterName } from "@/types/register-name.ts";
+import type { StatRow } from "@/interfaces/stat-row.ts";
+import type { Matrix } from "@/types/matrix.ts";
+import type { MatrixName } from "@/types/matrix-name.ts";
 
 const STORAGE_KEY = "calculator-fun.state";
 
@@ -34,16 +39,96 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
     if (typeof parsed !== "object" || parsed === null) return {};
 
     const record = parsed as Record<string, unknown>;
-    const state: { history?: HistoryEntry[]; memory?: number; theme?: Theme } = {};
+    const state: {
+      history?: HistoryEntry[];
+      memory?: number;
+      theme?: Theme;
+      angleMode?: AngleMode;
+      lastAnswer?: number | null;
+      entries?: string[];
+      registers?: Partial<Record<RegisterName, number>>;
+      lists?: StatRow[];
+      matrices?: Partial<Record<MatrixName, Matrix>>;
+    } = {};
 
     if (Array.isArray(record["history"])) {
-      state.history = record["history"].filter(isHistoryEntry);
+      state.history = record["history"]
+        .filter(isValidHistoryEntry)
+        .map((entry) => ({
+          expression: entry.expression,
+          result: entry.result,
+          // Entries saved before recall existed fall back to the shown value.
+          recall: typeof entry.recall === "string" && entry.recall !== ""
+            ? entry.recall
+            : entry.result,
+        }));
     }
     if (typeof record["memory"] === "number" && Number.isFinite(record["memory"])) {
       state.memory = record["memory"];
     }
     if (record["theme"] === "light" || record["theme"] === "dark") {
       state.theme = record["theme"];
+    }
+    if (
+      record["angleMode"] === "deg" ||
+      record["angleMode"] === "rad" ||
+      record["angleMode"] === "grad"
+    ) {
+      state.angleMode = record["angleMode"];
+    }
+    if (record["lastAnswer"] === null) {
+      state.lastAnswer = null;
+    } else if (
+      typeof record["lastAnswer"] === "number" &&
+      Number.isFinite(record["lastAnswer"])
+    ) {
+      state.lastAnswer = record["lastAnswer"];
+    }
+    const saved = record["registers"];
+    if (typeof saved === "object" && saved !== null) {
+      const registers: Partial<Record<RegisterName, number>> = {};
+      for (const name of ["A", "B", "C", "D"] as const) {
+        const value = (saved as Record<string, unknown>)[name];
+        if (typeof value === "number" && Number.isFinite(value)) registers[name] = value;
+      }
+      state.registers = registers;
+    }
+    if (Array.isArray(record["lists"])) {
+      // A cell is a finite number or nothing at all. Anything else saved by a
+      // future version, or corrupted in place, reads as an empty cell rather
+      // than taking the whole list down with it.
+      const cell = (value: unknown): number | null =>
+        typeof value === "number" && Number.isFinite(value) ? value : null;
+
+      state.lists = record["lists"]
+        .filter((row): row is Record<string, unknown> =>
+          typeof row === "object" && row !== null)
+        .map((row) => ({ L1: cell(row["L1"]), L2: cell(row["L2"]) }));
+    }
+    const grids = record["matrices"];
+    if (typeof grids === "object" && grids !== null) {
+      // A grid is rows of numbers. Anything else -- a ragged array, a string
+      // where a number should be -- reads as a zero in that cell rather than
+      // taking the matrix down with it.
+      const matrices: Partial<Record<MatrixName, Matrix>> = {};
+      for (const name of ["A", "B"] as const) {
+        const grid = (grids as Record<string, unknown>)[name];
+        if (!Array.isArray(grid)) continue;
+
+        matrices[name] = grid
+          .filter((row): row is unknown[] => Array.isArray(row))
+          .map((row) =>
+            row.map((value) =>
+              typeof value === "number" && Number.isFinite(value) ? value : 0
+            )
+          );
+      }
+      state.matrices = matrices;
+    }
+    if (Array.isArray(record["entries"])) {
+      state.entries = record["entries"].filter(
+        (entry): entry is string => typeof entry === "string"
+      );
     }
     return state;
   } catch {
@@ -74,7 +159,9 @@ export function clearState(storage: Storage | null = safeStorage()): void {
   }
 }
 
-function isHistoryEntry(value: unknown): value is HistoryEntry {
+function isValidHistoryEntry(
+  value: unknown
+): value is { expression: string; result: string; recall?: unknown } {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return (
