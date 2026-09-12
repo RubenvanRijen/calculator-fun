@@ -82,6 +82,19 @@ describe("plot", () => {
     });
   });
 
+  // The Vars panel shows a value; the grapher has to be able to use it.
+  it("plots an expression that uses a stored value", () => {
+    const result = plot("A*x", -5, 5, 11, { registers: { A: 2 } });
+    expect(result.error).toBeNull();
+    expect(allPoints(result).map((p) => p.y)).toEqual([
+      -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10,
+    ]);
+  });
+
+  it("reports a stored value that is missing", () => {
+    expect(plot("A*x", -5, 5).error).toMatch(/Nothing stored in A/);
+  });
+
   it("respects the sample count", () => {
     expect(allPoints(plot("x", 0, 1, 10))).toHaveLength(10);
   });

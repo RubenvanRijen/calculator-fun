@@ -2,6 +2,7 @@ import { tokenize, toRpn, evaluateRpn } from "@/expression.ts";
 import type { PlotPoint } from "@/interfaces/plot-point.ts";
 import type { PlotSegment } from "@/types/plot-segment.ts";
 import type { PlotResult } from "@/interfaces/plot-result.ts";
+import type { EvalContext } from "@/interfaces/eval-context.ts";
 
 /** How many points to sample across the visible range. */
 export const DEFAULT_SAMPLES = 400;
@@ -22,7 +23,8 @@ export function plot(
   expression: string,
   xMin: number,
   xMax: number,
-  samples: number = DEFAULT_SAMPLES
+  samples: number = DEFAULT_SAMPLES,
+  context: EvalContext = {}
 ): PlotResult {
   if (expression.trim() === "") return EMPTY;
   if (!(xMax > xMin)) {
@@ -47,8 +49,9 @@ export function plot(
   for (let index = 0; index < count; index += 1) {
     const x = xMin + index * step;
     try {
-      // Graphs are always drawn in radians, whatever the keypad is set to.
-      const y = evaluateRpn(rpn, { x });
+      // Graphs are always drawn in radians, whatever the keypad is set to,
+      // but stored values and Ans are as available here as anywhere else.
+      const y = evaluateRpn(rpn, { ...context, angleMode: "rad", x });
       evaluated += 1;
       sampled.push(Number.isFinite(y) ? { x, y } : null);
     } catch {
@@ -59,7 +62,7 @@ export function plot(
   if (evaluated === 0) {
     // Every sample threw, so the expression itself is the problem.
     try {
-      evaluateRpn(rpn, { x: 1 });
+      evaluateRpn(rpn, { ...context, angleMode: "rad", x: 1 });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Invalid expression";
       return { ...EMPTY, error: message };

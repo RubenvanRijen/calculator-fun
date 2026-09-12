@@ -11,6 +11,10 @@ export enum TokenKind {
   Variable = "variable",
   /** The previous result, as the Ans key inserts it. */
   Ans = "ans",
+  /** A trailing "!", which applies to the value before it. */
+  Factorial = "factorial",
+  /** A stored value, named by a single letter. */
+  Register = "register",
   /**
    * A named constant. Kept symbolic rather than turned into a float at
    * tokenize time, so the exact evaluator can tell π from 3.14159265358979.

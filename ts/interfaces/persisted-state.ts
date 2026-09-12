@@ -1,6 +1,7 @@
 import type { HistoryEntry } from "@/interfaces/history-entry.ts";
 import type { Theme } from "@/types/theme.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
+import type { RegisterName } from "@/types/register-name.ts";
 
 /** Everything that survives a page reload. */
 export interface PersistedState {
@@ -12,4 +13,6 @@ export interface PersistedState {
   readonly lastAnswer: number | null;
   /** Expressions the up/down arrows walk through. */
   readonly entries: readonly string[];
+  /** Values stored under A, B, C and D. */
+  readonly registers: Readonly<Partial<Record<RegisterName, number>>>;
 }

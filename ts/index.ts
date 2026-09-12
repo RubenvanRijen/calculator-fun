@@ -3,6 +3,7 @@ import { loadState, saveState } from "@/storage.ts";
 import { applyTheme, otherTheme, preferredTheme } from "@/theme.ts";
 import { Display } from "@/ui/display.ts";
 import { HistoryPanel } from "@/ui/history-panel.ts";
+import { RegisterPanel } from "@/ui/register-panel.ts";
 import { Keypad } from "@/ui/keypad.ts";
 import { setupGraphPanel } from "@/ui/graph-panel.ts";
 import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
@@ -48,6 +49,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
       angleMode: calculator.angleMode,
       lastAnswer: calculator.lastAnswer,
       entries: calculator.entries,
+      registers: calculator.registers,
     });
   };
 
@@ -57,14 +59,20 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     update();
   });
 
+  const registerPanel = new RegisterPanel(root, doc, signal, calculator, () => update());
+
   function update(): void {
     display.render(calculator);
     historyPanel.render(calculator);
+    registerPanel.render();
     persist();
   }
 
   const keypad = new Keypad(root, doc, calculator, signal, update);
-  const graph = setupGraphPanel(root, doc, signal);
+  const graph = setupGraphPanel(root, doc, signal, () => ({
+    registers: calculator.registers,
+    ans: calculator.lastAnswer ?? undefined,
+  }));
 
   // Anything clicked outside the keypad -- a tab, a history entry, the theme
   // toggle, a graph chip -- also spends a pending 2nd. Otherwise the shift

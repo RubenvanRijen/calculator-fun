@@ -79,6 +79,8 @@ export class Keypad {
       },
       ans: () => calculator.appendAns(),
       "toggle-exact": () => calculator.toggleExact(),
+      random: () => calculator.appendRandom(),
+      factorial: () => calculator.appendFactorial(),
       fraction: () => calculator.appendFraction(),
       "cursor-left": () => calculator.moveLeft(),
       "cursor-right": () => calculator.moveRight(),
@@ -180,6 +182,7 @@ export class Keypad {
       case "Backspace": calculator.delete(); return "DEL";
       case "Escape": calculator.clear(); return "AC";
       case "%": calculator.percent(); return "%";
+      case "!": calculator.appendFactorial(); return "n!";
       case "(": calculator.openParen(); return "(";
       case ")": calculator.closeParen(); return ")";
       // The arrows return null when they did nothing, so the keypress is left

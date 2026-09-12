@@ -159,6 +159,15 @@ export function evaluateExactRpn(
         break;
       }
 
+      case TokenKind.Register: {
+        const stored = context.registers?.[token.name];
+        if (stored === undefined) return null;
+        const value = Exact.fromNumber(stored);
+        if (value === null) return null;
+        stack.push(value);
+        break;
+      }
+
       case TokenKind.UnaryMinus: {
         const value = pop();
         if (value === null) return null;
@@ -179,6 +188,10 @@ export function evaluateExactRpn(
         const right = pop();
         const left = pop();
         if (right === null || left === null) return null;
+
+        // Combinations and factorials are whole numbers, so the float path
+        // is already exact; there is nothing for this evaluator to add.
+        if (token.operator === "nCr" || token.operator === "nPr") return null;
 
         const result =
           token.operator === "+" ? Exact.add(left, right)

@@ -383,8 +383,143 @@ describe("two numbers in a row", () => {
   });
 });
 
+describe("factorial", () => {
+  it.each([
+    ["0!", 1],
+    ["1!", 1],
+    ["5!", 120],
+    ["10!", 3628800],
+  ])("%s = %s", (input, expected) => {
+    expect(evaluateString(input)).toBe(expected);
+  });
+
+  // Postfix: it binds to the value immediately before it.
+  it.each([
+    ["3!+1", 7],
+    ["2*3!", 12],
+    ["3!^2", 36],
+    ["-3!", -6],
+    ["2!*3!", 12],
+  ])("binds correctly in %s", (input, expected) => {
+    expect(evaluateString(input)).toBe(expected);
+  });
+
+  it.each(["2.5!", "(-1)!"])("rejects %j", (input) => {
+    expect(() => evaluateString(input)).toThrow(/whole number/);
+  });
+
+  it("refuses a result too large to mean anything", () => {
+    expect(() => evaluateString("200!")).toThrow(/too large/);
+  });
+});
+
+describe("combinations and permutations", () => {
+  it.each([
+    ["5nCr2", 10],
+    ["5nPr2", 20],
+    ["10nCr5", 252],
+    ["52nCr5", 2598960],
+    ["5nCr0", 1],
+    ["5nCr5", 1],
+    ["5nPr0", 1],
+    ["5nPr5", 120],
+  ])("%s = %s", (input, expected) => {
+    expect(evaluateString(input)).toBe(expected);
+  });
+
+  it("is zero when more are taken than there are", () => {
+    expect(evaluateString("5nCr7")).toBe(0);
+    expect(evaluateString("5nPr7")).toBe(0);
+  });
+
+  it("is case-insensitive", () => {
+    expect(evaluateString("5NCR2")).toBe(10);
+  });
+
+  // Between multiplication and a power.
+  it.each([
+    ["2*5nCr2", 20],
+    ["2+3nCr2", 5],
+    ["5nCr2^2", 5],
+  ])("binds correctly in %s", (input, expected) => {
+    expect(evaluateString(input)).toBe(expected);
+  });
+
+  it.each(["5nCr2.5", "(-1)nCr2"])("rejects %j", (input) => {
+    expect(() => evaluateString(input)).toThrow(/whole numbers/);
+  });
+
+  it.each(["2000nPr1000", "1000nCr500"])("refuses %j as too large", (input) => {
+    expect(() => evaluateString(input)).toThrow(/too large/);
+  });
+
+  it("stays exact for a large count", () => {
+    // 50C25 is well past 2^53 if computed as three factorials.
+    expect(evaluateString("50nCr25")).toBe(126410606437752);
+  });
+});
+
+describe("registers", () => {
+  const registers = { A: 7, B: 3 };
+
+  it.each([
+    ["A", 7],
+    ["A+1", 8],
+    ["A*B", 21],
+    ["A nCr B", 35],
+    ["2A", 14],
+    ["A^2", 49],
+  ])("%s = %s", (input, expected) => {
+    expect(evaluateString(input, { registers })).toBe(expected);
+  });
+
+  it("says which register is empty", () => {
+    expect(() => evaluateString("C+1", { registers })).toThrow("Nothing stored in C");
+  });
+
+  it("says nothing is stored when none are", () => {
+    expect(() => evaluateString("A")).toThrow("Nothing stored in A");
+  });
+
+  // E and X already mean Euler's constant and the graph variable.
+  it("does not treat E or X as a register", () => {
+    expect(evaluateString("E", { registers })).toBeCloseTo(Math.E);
+    expect(evaluateString("X", { registers, x: 5 })).toBe(5);
+  });
+
+  // "asin" would swallow the A, so an uppercase register letter is tried
+  // first -- the same collision E and X were excluded for.
+  it.each([
+    ["Asin(30)", 7 * Math.sin(30)],
+    ["Acos(0)", 7 * Math.cos(0)],
+    ["Atan(0)", 0],
+    ["Bln(1)", 0],
+  ])("reads %j as a register times a function", (input, expected) => {
+    expect(evaluateString(input, { registers })).toBeCloseTo(expected);
+  });
+
+  it("still reads a lowercase function name as the function", () => {
+    expect(evaluateString("asin(0)", { registers })).toBe(0);
+    expect(evaluateString("acos(1)", { registers })).toBe(0);
+  });
+
+  // Uppercase only, so a lowercase function name is never swallowed.
+  it("does not read a lowercase letter as a register", () => {
+    expect(() => evaluateString("a+1", { registers })).toThrow(/Unknown name/);
+  });
+
+  it("rejects a letter that is not a register", () => {
+    expect(() => evaluateString("Z+1", { registers })).toThrow(/Unknown name "Z"/);
+  });
+
+  it("still reads a word made of register letters as unknown", () => {
+    expect(() => evaluateString("ABBA", { registers })).not.toThrow();
+    expect(evaluateString("ABBA", { registers })).toBe(7 * 3 * 3 * 7);
+  });
+});
+
 describe("isOperation", () => {
-  it.each(["+", "-", "*", "÷", "^"])("accepts %s", (value) => {
+  it.each(["+", "-", "*", "÷", "^", "nCr", "nPr"])("accepts %s", (value) => {
     expect(isOperation(value)).toBe(true);
   });
 

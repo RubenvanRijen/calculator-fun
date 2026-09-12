@@ -1,5 +1,6 @@
 import { plot } from "@/graph.ts";
 import type { PlotResult } from "@/interfaces/plot-result.ts";
+import type { EvalContext } from "@/interfaces/eval-context.ts";
 
 /** The SVG user-space the plot is drawn in. */
 const PLOT_WIDTH = 280;
@@ -30,7 +31,9 @@ function readNumber(input: HTMLInputElement | null, fallback: number): number {
 export function setupGraphPanel(
   root: Document | HTMLElement,
   doc: Document,
-  signal: AbortSignal
+  signal: AbortSignal,
+  /** Supplies stored values, so "A*x" can be plotted. */
+  contextOf: () => EvalContext
 ): { render: () => void } {
   const query = <T extends HTMLElement>(selector: string): T | null =>
     root.querySelector<T>(selector);
@@ -61,7 +64,7 @@ export function setupGraphPanel(
     const expression = input?.value ?? "";
     const xMin = readNumber(minInput, -10);
     const xMax = readNumber(maxInput, 10);
-    const result = plot(expression, xMin, xMax);
+    const result = plot(expression, xMin, xMax, undefined, contextOf());
 
     lastPlot = result;
     lastRange = { xMin, xMax };

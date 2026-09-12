@@ -3,6 +3,7 @@ import type { Token } from "@/types/token.ts";
 import type { Operation } from "@/types/operation.ts";
 import type { FunctionName } from "@/types/function-name.ts";
 import type { ConstantName } from "@/types/constant-name.ts";
+import type { RegisterName } from "@/types/register-name.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 
@@ -15,10 +16,16 @@ const PRECEDENCE: Record<Operation, number> = {
   "-": 1,
   "*": 2,
   "÷": 2,
-  "^": 4,
+  // Between multiplication and a power, so "2 * 5 nCr 2" is 2 * (5 nCr 2) and
+  // "5 nCr 2 ^ 2" is 5 nCr (2^2).
+  nCr: 3,
+  nPr: 3,
+  "^": 5,
 };
 
-const UNARY_MINUS_PRECEDENCE = 3;
+// Above the binary operators, so -5 * 2 is (-5) * 2, but below "^", so -2^2
+// is -(2^2) as it is in mathematics.
+const UNARY_MINUS_PRECEDENCE = 4;
 
 /** "^" is the only right-associative operator: 2^3^2 is 2^9, not 8^2. */
 const RIGHT_ASSOCIATIVE: ReadonlySet<Operation> = new Set<Operation>(["^"]);
@@ -75,7 +82,15 @@ export const CONSTANT_VALUES: Readonly<Record<ConstantName, number>> = {
   e: Math.E,
 };
 
-const OPERATIONS = ["+", "-", "*", "÷", "^"] as const satisfies readonly Operation[];
+const OPERATIONS = [
+  "+", "-", "*", "÷", "^", "nCr", "nPr",
+] as const satisfies readonly Operation[];
+
+/** The operator names the tokenizer reads as words rather than symbols. */
+const WORD_OPERATORS: Readonly<Record<string, Operation>> = {
+  ncr: "nCr",
+  npr: "nPr",
+};
 
 /**
  * Every name the tokenizer recognises, longest first so that a short name can
@@ -84,6 +99,7 @@ const OPERATIONS = ["+", "-", "*", "÷", "^"] as const satisfies readonly Operat
 const KNOWN_NAMES: readonly string[] = [
   ...FUNCTION_NAMES,
   ...Object.keys(CONSTANT_NAMES),
+  ...Object.keys(WORD_OPERATORS),
   "x",
   "ans",
 ].sort((a, b) => b.length - a.length);
@@ -93,25 +109,47 @@ export function isOperation(value: string): value is Operation {
   return (OPERATIONS as readonly string[]).includes(value);
 }
 
+/** One piece of a letter run: a known name, or a single-letter register. */
+type RunPiece = { readonly known: string } | { readonly register: RegisterName };
+
+const REGISTER_NAMES: readonly RegisterName[] = ["A", "B", "C", "D"];
+
+function asRegister(letter: string): RegisterName | null {
+  return REGISTER_NAMES.find((name) => name === letter) ?? null;
+}
+
 /**
- * Split a run of letters into known names, longest match first. Returns null
- * when any part of the run is not a name, so the caller can report the whole
- * word instead of a fragment of it.
+ * Split a run of letters into known names and register letters, longest match
+ * first, backtracking when a choice dead-ends. Returns null when any part of
+ * the run is neither, so the caller can report the whole word rather than a
+ * fragment of it.
+ *
+ * Known names are matched case-insensitively and win over registers, which is
+ * why E and X are not register letters: they already mean Euler's constant
+ * and the graph variable.
  */
-function splitIntoNames(run: string): string[] | null {
+function splitIntoNames(run: string): RunPiece[] | null {
   const lower = run.toLowerCase();
 
-  // Backtracking, because committing to the longest prefix can dead-end on a
-  // run that does decompose: "expi" is e, x, pi, but a greedy pass takes
-  // "exp"... and then gives up on "i". Runs are a handful of characters, so
-  // the search space is trivial.
-  const from = (start: number): string[] | null => {
-    if (start === lower.length) return [];
+  const from = (start: number): RunPiece[] | null => {
+    if (start === run.length) return [];
+
+    // An uppercase register letter is tried first, because names are matched
+    // case-insensitively and "asin" would otherwise swallow the A: "Asin(30)"
+    // has to read as A x sin(30), not asin(30). Function names are lowercase
+    // everywhere the keypad writes them, so nothing is lost the other way.
+    const register = asRegister(run[start] ?? "");
+    if (register !== null) {
+      const rest = from(start + 1);
+      if (rest !== null) return [{ register }, ...rest];
+    }
+
     for (const candidate of KNOWN_NAMES) {
       if (!lower.startsWith(candidate, start)) continue;
       const rest = from(start + candidate.length);
-      if (rest !== null) return [candidate, ...rest];
+      if (rest !== null) return [{ known: candidate }, ...rest];
     }
+
     return null;
   };
 
@@ -152,6 +190,8 @@ export function tokenize(input: string): Token[] {
       last.kind === TokenKind.Variable ||
       last.kind === TokenKind.Ans ||
       last.kind === TokenKind.Constant ||
+      last.kind === TokenKind.Register ||
+      last.kind === TokenKind.Factorial ||
       last.kind === TokenKind.RightParen
     ) {
       tokens.push({ kind: TokenKind.Operator, operator: "*" });
@@ -205,6 +245,13 @@ export function tokenize(input: string): Token[] {
       continue;
     }
 
+    if (char === "!") {
+      tokens.push({ kind: TokenKind.Factorial });
+      lastWasLiteral = false;
+      index += 1;
+      continue;
+    }
+
     if (char === "-" && expectsOperand()) {
       tokens.push({ kind: TokenKind.UnaryMinus });
       lastWasLiteral = false;
@@ -234,11 +281,14 @@ export function tokenize(input: string): Token[] {
       // name in the run and that bracket has to be there. Without this check a
       // typo that happens to decompose -- "cose(x)" -> cos, e -- would quietly
       // evaluate as cos(e)*x instead of being rejected.
-      const functionAt = names.findIndex((name) =>
-        (FUNCTION_NAMES as readonly string[]).includes(name)
+      const functionAt = names.findIndex(
+        (piece) =>
+          "known" in piece &&
+          (FUNCTION_NAMES as readonly string[]).includes(piece.known)
       );
       if (functionAt !== -1) {
-        const name = names[functionAt] ?? "";
+        const piece = names[functionAt];
+        const name = piece !== undefined && "known" in piece ? piece.known : "";
         if (functionAt !== names.length - 1) {
           throw new Error(`Unknown name "${run}"`);
         }
@@ -249,8 +299,24 @@ export function tokenize(input: string): Token[] {
         }
       }
 
-      for (const name of names) {
+      for (const piece of names) {
+        if ("register" in piece) {
+          implyMultiplication();
+          tokens.push({ kind: TokenKind.Register, name: piece.register });
+          continue;
+        }
+
+        const name = piece.known;
+
+        // An infix word operator is not a value, so it implies no product.
+        const wordOperator = WORD_OPERATORS[name];
+        if (wordOperator !== undefined) {
+          tokens.push({ kind: TokenKind.Operator, operator: wordOperator });
+          continue;
+        }
+
         implyMultiplication();
+
         const functionName = FUNCTION_NAMES.find((candidate) => candidate === name);
         if (functionName !== undefined) {
           tokens.push({ kind: TokenKind.Function, name: functionName });
@@ -265,8 +331,8 @@ export function tokenize(input: string): Token[] {
           continue;
         }
         const constant = CONSTANT_NAMES[name];
-        // KNOWN_NAMES is built from these three sources, so this is
-        // unreachable -- but a throw beats silently evaluating to zero.
+        // KNOWN_NAMES is built from these sources, so this is unreachable --
+        // but a throw beats silently evaluating to zero.
         if (constant === undefined) throw new Error(`Unknown name "${name}"`);
         tokens.push({ kind: TokenKind.Constant, name: constant });
       }
@@ -304,6 +370,10 @@ export function toRpn(tokens: readonly Token[]): Token[] {
       case TokenKind.Variable:
       case TokenKind.Ans:
       case TokenKind.Constant:
+      case TokenKind.Register:
+      // Postfix: it applies to the value already in the output, so it goes
+      // straight there rather than waiting on the stack.
+      case TokenKind.Factorial:
         output.push(token);
         break;
 
@@ -374,6 +444,53 @@ export function toRpn(tokens: readonly Token[]): Token[] {
  * Evaluate postfix tokens. `x` supplies the free variable for the grapher;
  * an expression that uses it without one is an error.
  */
+/** n!, for a whole number small enough to mean anything in a double. */
+function factorial(value: number): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error("Factorial needs a whole number that is not negative");
+  }
+  if (value > 170) throw new Error("Result is too large");
+
+  let result = 1;
+  for (let i = 2; i <= value; i += 1) result *= i;
+  return result;
+}
+
+/** nPr: the number of ordered selections of r from n. */
+function permutations(n: number, r: number): number {
+  if (!Number.isInteger(n) || !Number.isInteger(r) || n < 0 || r < 0) {
+    throw new Error("nPr needs whole numbers that are not negative");
+  }
+  if (r > n) return 0;
+
+  let result = 1;
+  for (let i = 0; i < r; i += 1) {
+    result *= n - i;
+    if (result > Number.MAX_SAFE_INTEGER) throw new Error("Result is too large");
+  }
+  return result;
+}
+
+/** nCr: the number of unordered selections of r from n. */
+function combinations(n: number, r: number): number {
+  if (!Number.isInteger(n) || !Number.isInteger(r) || n < 0 || r < 0) {
+    throw new Error("nCr needs whole numbers that are not negative");
+  }
+  if (r > n) return 0;
+
+  // Multiply and divide in step, which keeps the running value small enough
+  // to stay exact far longer than computing three factorials would.
+  const take = Math.min(r, n - r);
+  let result = 1;
+  for (let i = 1; i <= take; i += 1) {
+    result = (result * (n - take + i)) / i;
+    // Past this the value is no longer a whole number in a double, so
+    // rounding it would be claiming a precision that is not there.
+    if (result > Number.MAX_SAFE_INTEGER) throw new Error("Result is too large");
+  }
+  return Math.round(result);
+}
+
 export function evaluateRpn(rpn: readonly Token[], context: EvalContext = {}): number {
   const angleMode = context.angleMode ?? "rad";
   const x = context.x;
@@ -406,6 +523,17 @@ export function evaluateRpn(rpn: readonly Token[], context: EvalContext = {}): n
         stack.push(CONSTANT_VALUES[token.name]);
         break;
 
+      case TokenKind.Register: {
+        const stored = context.registers?.[token.name];
+        if (stored === undefined) throw new Error(`Nothing stored in ${token.name}`);
+        stack.push(stored);
+        break;
+      }
+
+      case TokenKind.Factorial:
+        stack.push(factorial(pop()));
+        break;
+
       case TokenKind.UnaryMinus:
         stack.push(-pop());
         break;
@@ -433,6 +561,12 @@ export function evaluateRpn(rpn: readonly Token[], context: EvalContext = {}): n
             break;
           case "^":
             stack.push(left ** right);
+            break;
+          case "nCr":
+            stack.push(combinations(left, right));
+            break;
+          case "nPr":
+            stack.push(permutations(left, right));
             break;
         }
         break;

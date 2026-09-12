@@ -32,7 +32,7 @@
                 <div data-error class="error" role="alert" hidden></div>
             </div>
 
-            <button data-action="ans" class="key-small"><span class="legend">Ans</span></button>
+            <button data-action="ans" data-action-alt="random" class="key-small"><span class="legend">Ans</span><span class="legend-alt">rand</span></button>
             <button data-action="cursor-left" class="key-small" aria-label="Move left"><span class="legend">&#x25C0;</span></button>
             <button data-action="cursor-right" class="key-small" aria-label="Move right"><span class="legend">&#x25B6;</span></button>
             <button data-action="recall-previous" class="key-small" aria-label="Previous entry"><span class="legend">&#x25B2;</span></button>
@@ -57,16 +57,16 @@
             <button data-action="close-paren" class="key-small"><span class="legend">)</span></button>
             <button data-action="clear" class="key-action"><span class="legend">AC</span></button>
             <button data-action="delete" class="key-action"><span class="legend">DEL</span></button>
-            <button data-action="operation" data-arg="÷" class="key-operator"><span class="legend">÷</span></button>
+            <button data-action="operation" data-arg="÷" data-action-alt="operation" data-arg-alt="nCr" class="key-operator"><span class="legend">÷</span><span class="legend-alt">nCr</span></button>
             <button data-action="number" data-arg="7"><span class="legend">7</span></button>
             <button data-action="number" data-arg="8"><span class="legend">8</span></button>
             <button data-action="number" data-arg="9"><span class="legend">9</span></button>
             <button data-action="fraction" data-action-alt="toggle-exact" class="key-small"><span class="legend">n/d</span><span class="legend-alt">F⇔D</span></button>
-            <button data-action="operation" data-arg="*" class="key-operator"><span class="legend">*</span></button>
+            <button data-action="operation" data-arg="*" data-action-alt="operation" data-arg-alt="nPr" class="key-operator"><span class="legend">*</span><span class="legend-alt">nPr</span></button>
             <button data-action="number" data-arg="4"><span class="legend">4</span></button>
             <button data-action="number" data-arg="5"><span class="legend">5</span></button>
             <button data-action="number" data-arg="6"><span class="legend">6</span></button>
-            <button data-action="percent"><span class="legend">%</span></button>
+            <button data-action="percent" data-action-alt="factorial" class="key-small"><span class="legend">%</span><span class="legend-alt">n!</span></button>
             <button data-action="operation" data-arg="-" class="key-operator"><span class="legend">-</span></button>
             <button data-action="number" data-arg="1"><span class="legend">1</span></button>
             <button data-action="number" data-arg="2"><span class="legend">2</span></button>
@@ -83,6 +83,7 @@
                 <button data-tab="history" class="tab is-active" role="tab" type="button"
                     aria-selected="true">History</button>
                 <button data-tab="graph" class="tab" role="tab" type="button" aria-selected="false">ƒ(x)</button>
+                <button data-tab="vars" class="tab" role="tab" type="button" aria-selected="false">Vars</button>
             </div>
 
             <section data-panel="history" class="panel-body">
@@ -92,6 +93,16 @@
                 </div>
                 <p data-history-empty class="muted">Nothing yet.</p>
                 <ul data-history-list class="history-list"></ul>
+            </section>
+
+            <section data-panel="vars" class="panel-body" hidden>
+                <p class="muted">
+                    Store the displayed value under a letter, then use it in any
+                    expression. The letters are uppercase, so that "Asin(30)" is
+                    A&times;sin(30) rather than asin(30). E and X are not offered:
+                    they already mean Euler's constant and the graph variable.
+                </p>
+                <ul data-register-list class="register-list"></ul>
             </section>
 
             <section data-panel="graph" class="panel-body" hidden>
@@ -140,7 +151,9 @@
         <kbd>2nd</kbd> reaches the alternate on keys that show one:
         sin/cos/tan&nbsp;&rarr;&nbsp;their inverses, log&nbsp;&rarr;&nbsp;10&#x02E3;,
         ln&nbsp;&rarr;&nbsp;e&#x02E3;, &radic;&nbsp;&rarr;&nbsp;abs,
-        &pi;&nbsp;&rarr;&nbsp;e, MC&nbsp;&rarr;&nbsp;clear history.
+        &pi;&nbsp;&rarr;&nbsp;e, MC&nbsp;&rarr;&nbsp;clear history,
+        &divide;&nbsp;&rarr;&nbsp;nCr, *&nbsp;&rarr;&nbsp;nPr, %&nbsp;&rarr;&nbsp;n!,
+        Ans&nbsp;&rarr;&nbsp;rand, n/d&nbsp;&rarr;&nbsp;F&hArr;D.
         <kbd>mode</kbd> cycles RAD &rarr; GRAD &rarr; DEG.
     </p>
 </body>

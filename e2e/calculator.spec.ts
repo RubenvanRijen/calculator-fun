@@ -246,6 +246,49 @@ test.describe("exact answers", () => {
   });
 });
 
+test.describe("stored values and probability", () => {
+  test("stores a value and uses it", async ({ page }) => {
+    await page.locator('[data-tab="vars"]').click();
+    await press(page, "4", "2");
+    await page.locator('[data-register="A"] button', { hasText: "Set" }).click();
+    await expect(page.locator('[data-register="A"] .register-value')).toHaveText("42");
+
+    await press(page, "AC");
+    await page.locator('[data-register="A"] button', { hasText: "Use" }).click();
+    await press(page, "+", "8", "=");
+    await expect(result(page)).toHaveText("50");
+  });
+
+  test("remembers stored values across a reload", async ({ page }) => {
+    await page.locator('[data-tab="vars"]').click();
+    await press(page, "7");
+    await page.locator('[data-register="B"] button', { hasText: "Set" }).click();
+
+    await page.reload();
+    await page.locator('[data-tab="vars"]').click();
+    await expect(page.locator('[data-register="B"] .register-value')).toHaveText("7");
+  });
+
+  test("computes combinations through 2nd", async ({ page }) => {
+    await press(page, "5", "2", "2nd");
+    await page.locator('[data-keypad] [data-arg-alt="nCr"]').click();
+    await press(page, "5", "=");
+    await expect(result(page)).toHaveText("2,598,960");
+  });
+
+  test("computes a factorial", async ({ page }) => {
+    await page.keyboard.type("5!");
+    await page.keyboard.press("Enter");
+    await expect(result(page)).toHaveText("120");
+  });
+
+  test("reports a factorial of something that is not a whole number", async ({ page }) => {
+    await page.keyboard.type("2.5!");
+    await page.keyboard.press("Enter");
+    await expect(page.locator("[data-error]")).toContainText("whole number");
+  });
+});
+
 test.describe("cursor, recall and Ans", () => {
   test("shows a blinking caret while typing", async ({ page }) => {
     await press(page, "1", "2");

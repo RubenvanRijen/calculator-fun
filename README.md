@@ -139,6 +139,20 @@ multiplying by 3 gives exactly `1` rather than `0.999999999999`.
 
 `n/d` starts a fraction, and the history shows whichever form was on screen.
 
+**Stored values.** The Vars tab keeps four registers, `A` to `D`: store what
+is on the display, then use the letter in any expression, including in the
+ƒ(x) field. The letters are uppercase and are matched before function names,
+so `Asin(30)` is A×sin(30) rather than `asin(30)`. `E` and `X` are not offered
+because the parser already reads those as Euler's constant and the graph
+variable, and a letter cannot mean two things at once.
+
+**Probability.** `nCr` and `nPr` are infix, as they are on the hardware —
+`52 nCr 5` is `2,598,960` — which is why the parser needs no multi-argument
+functions and no comma. `!` is postfix and binds to the value before it, so
+`2 × 3!` is 12. `rand` inserts a random value at the moment it is pressed,
+rather than re-rolling on every evaluation, so the preview does not flicker
+and the answer matches what was on screen.
+
 **Scientific keys**: `√`, `x²`, `1/x`, `xⁿ`, `π`, `sin`, `cos`, `tan`, `log`,
 `ln`, plus `±` to flip a sign.
 

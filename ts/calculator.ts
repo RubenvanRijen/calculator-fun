@@ -12,6 +12,7 @@ import { MemoryRegister } from "@/memory-register.ts";
 import {
   balanceParentheses,
   expectsOperand,
+  trailingOperatorLength,
   formatExpression,
   formatExpressionWithCursor,
   formatOperand,
@@ -21,6 +22,7 @@ import {
 import type { Operation } from "@/types/operation.ts";
 import type { HistoryEntry } from "@/interfaces/history-entry.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
+import type { RegisterName } from "@/types/register-name.ts";
 
 /** How many past expressions the up/down arrows can walk back through. */
 const MAX_ENTRIES = 50;
@@ -57,6 +59,8 @@ export class Calculator {
   #exact: string | null = null;
   /** The same value, kept so it can be carried forward without rounding. */
   #exactValue: ExactValue | null = null;
+  /** Values stored under A, B, C and D. */
+  #registers: Partial<Record<RegisterName, number>> = {};
   /** Whether the display is showing the exact form rather than the decimal. */
   #showingExact = true;
   /** Expressions that were computed, oldest first, for up/down recall. */
@@ -100,6 +104,48 @@ export class Calculator {
   set angleMode(mode: AngleMode) {
     this.#angleMode = mode;
     this.#refreshPreview();
+  }
+
+  /** What is stored under each letter. */
+  get registers(): Readonly<Partial<Record<RegisterName, number>>> {
+    return this.#registers;
+  }
+
+  /** Store the value currently on the display under `name`. */
+  store(name: RegisterName): void {
+    const value = this.#displayedValue();
+    if (value === null) {
+      this.error = "Nothing to store";
+      return;
+    }
+    this.error = null;
+    this.#registers = { ...this.#registers, [name]: value };
+    // What is on screen may depend on this register.
+    this.#refreshPreview();
+  }
+
+  /** Forget what is stored under `name`. */
+  clearRegister(name: RegisterName): void {
+    const next = { ...this.#registers };
+    delete next[name];
+    this.#registers = next;
+    this.#refreshPreview();
+  }
+
+  /** Insert a reference to a stored value. */
+  appendRegister(name: RegisterName): void {
+    this.#beginFreshEntry();
+    this.#buffer.push(name);
+    this.#refreshPreview();
+  }
+
+  /**
+   * Insert a random number. The value is fixed at the moment the key is
+   * pressed rather than re-rolled on every evaluation, so the live preview
+   * does not flicker and the answer matches what was on screen.
+   */
+  appendRandom(): void {
+    this.insert(Math.random().toFixed(6));
   }
 
   /** How many parentheses are still open, for the display indicator. */
@@ -157,6 +203,15 @@ export class Calculator {
     this.#refreshPreview();
   }
 
+  /** Append a factorial, which applies to the value already there. */
+  appendFactorial(): void {
+    this.error = null;
+    this.#continueFromResult();
+    if (this.#buffer.isEmptyBeforeCursor || this.#buffer.endsWithOperator) return;
+    this.#buffer.push("!");
+    this.#refreshPreview();
+  }
+
   /** Insert a reference to the previous result. */
   appendAns(): void {
     this.#beginFreshEntry();
@@ -174,12 +229,14 @@ export class Calculator {
     memory?: number | undefined;
     lastAnswer?: number | null | undefined;
     entries?: readonly string[] | undefined;
+    registers?: Readonly<Partial<Record<RegisterName, number>>> | undefined;
   }): void {
     this.#history.restore(state.history ?? []);
     this.#memory.value = state.memory ?? 0;
     this.#lastAnswer = state.lastAnswer ?? null;
     this.#entries = [...(state.entries ?? [])].slice(-MAX_ENTRIES);
     this.#entryIndex = this.#entries.length;
+    this.#registers = { ...(state.registers ?? {}) };
   }
 
   /** The value Ans refers to, for persistence. */
@@ -267,17 +324,27 @@ export class Calculator {
     if (!isOperation(operation)) return;
     this.#continueFromResult();
 
-    // A trailing "(" has nothing to operate on, so "(" then "+" would leave
-    // "(+", which can never evaluate.
-    if (
-      this.#buffer.isEmptyBeforeCursor ||
-      this.#buffer.textBeforeCursor.endsWith("(")
-    ) {
+    const before = this.#buffer.textBeforeCursor;
+    const atStart = this.#buffer.isEmptyBeforeCursor || before.endsWith("(");
+
+    // A minus where an operand is expected is a sign, not a subtraction, so
+    // "-2^2" can be typed and reads as -(2^2). Every other operator has
+    // nothing to act on there.
+    if (atStart) {
+      if (operation === "-") {
+        this.#buffer.push("-");
+        this.#refreshPreview();
+      }
       return;
     }
 
-    // Replace a trailing operator rather than stacking two.
-    if (this.#buffer.endsWithOperator) this.#buffer.pop();
+    // A lone sign is not something to build on either: "-" then "+" must not
+    // leave a leading "+".
+    if (before === "-") return;
+
+    // Replace a trailing operator rather than stacking two -- popOperator,
+    // because nCr is three characters, not one.
+    if (this.#buffer.endsWithOperator) this.#buffer.popOperator();
     this.#buffer.push(operation);
     this.#refreshPreview();
   }
@@ -435,6 +502,7 @@ export class Calculator {
       value = evaluateString(expression, {
         angleMode: this.#angleMode,
         ans: this.#previousAnswer(),
+        registers: this.#registers,
       });
     } catch (cause) {
       this.error = cause instanceof Error ? cause.message : "Invalid expression";
@@ -531,6 +599,7 @@ export class Calculator {
       return evaluateExactRpn(toRpn(tokenize(expression)), {
         angleMode: this.#angleMode,
         ans: this.#previousAnswer(),
+        registers: this.#registers,
       });
     } catch {
       return null;
@@ -618,9 +687,12 @@ export class Calculator {
       return;
     }
     const whole = this.#buffer.balanced;
-    const withoutTail = balanceParentheses(
-      this.#buffer.text.replace(/[+\-*÷^]+$/, "")
-    );
+    let stripped = this.#buffer.text;
+    for (let length = trailingOperatorLength(stripped); length > 0; ) {
+      stripped = stripped.slice(0, -length);
+      length = trailingOperatorLength(stripped);
+    }
+    const withoutTail = balanceParentheses(stripped);
     for (const candidate of [whole, withoutTail]) {
       const value = this.#tryEvaluate(candidate);
       if (value !== null) {
@@ -637,6 +709,7 @@ export class Calculator {
       const value = evaluateString(expression, {
         angleMode: this.#angleMode,
         ans: this.#previousAnswer(),
+        registers: this.#registers,
       });
       return Number.isFinite(value) ? roundResult(value).toString() : null;
     } catch {

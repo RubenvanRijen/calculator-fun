@@ -95,6 +95,25 @@ describe("setupCalculator", () => {
       }
     });
 
+    // A panel with no tab is unreachable, which is exactly what happened to
+    // the Vars panel: its section shipped, its tab did not.
+    it("gives every panel a tab to reach it by", () => {
+      const panels = [...root.querySelectorAll<HTMLElement>("[data-panel]")]
+        .map((panel) => panel.dataset["panel"]);
+      expect(panels.length).toBeGreaterThan(1);
+
+      for (const name of panels) {
+        expect(root.querySelector(`[data-tab="${name}"]`), name).not.toBeNull();
+      }
+    });
+
+    it("gives every tab a panel to show", () => {
+      for (const tab of root.querySelectorAll<HTMLElement>("[data-tab]")) {
+        const name = tab.dataset["tab"];
+        expect(root.querySelector(`[data-panel="${name}"]`), name).not.toBeNull();
+      }
+    });
+
     it("has every panel control the wiring looks for", () => {
       for (const selector of [
         "[data-expression]", "[data-result]", "[data-error]",
@@ -604,6 +623,128 @@ describe("setupCalculator", () => {
       type("ArrowLeft");
       type("9");
       expect(expression()).toBe("12");
+    });
+  });
+
+  describe("stored values", () => {
+    const row = (name: string) =>
+      root.querySelector<HTMLElement>(`[data-register="${name}"]`);
+    const buttonIn = (name: string, label: string) =>
+      [...(row(name)?.querySelectorAll("button") ?? [])].find(
+        (b) => b.textContent?.trim() === label
+      );
+
+    it("lists a row for each letter", () => {
+      for (const name of ["A", "B", "C", "D"]) {
+        expect(row(name), name).not.toBeNull();
+      }
+      expect(row("E")).toBeNull();
+    });
+
+    it("starts empty", () => {
+      expect(row("A")?.querySelector(".register-value")?.textContent).toBe("empty");
+    });
+
+    it("stores the displayed value", () => {
+      press("4", "2");
+      buttonIn("A", "Set")?.click();
+      expect(row("A")?.querySelector(".register-value")?.textContent).toBe("42");
+    });
+
+    it("uses a stored value in an expression", () => {
+      press("7");
+      buttonIn("A", "Set")?.click();
+      press("AC");
+      buttonIn("A", "Use")?.click();
+      press("+", "1", "=");
+      expect(result()).toBe("8");
+    });
+
+    it("clears one", () => {
+      press("5");
+      buttonIn("A", "Set")?.click();
+      buttonIn("A", "Clear")?.click();
+      expect(row("A")?.querySelector(".register-value")?.textContent).toBe("empty");
+    });
+
+    it("reports using an empty one rather than guessing", () => {
+      buttonIn("B", "Use")?.click();
+      press("+", "1", "=");
+      expect(errorEl()?.textContent).toBe("Nothing stored in B");
+    });
+
+    it("survives a reload", () => {
+      press("9");
+      buttonIn("A", "Set")?.click();
+      handle.destroy();
+
+      document.body.innerHTML = MARKUP;
+      root = document.body;
+      handle = setupCalculator(root);
+
+      expect(row("A")?.querySelector(".register-value")?.textContent).toBe("9");
+    });
+  });
+
+  describe("probability keys", () => {
+    it("reaches nCr through 2nd on the divide key", () => {
+      press("5", "2", "2nd");
+      root.querySelector<HTMLElement>('[data-arg-alt="nCr"]')?.click();
+      press("5", "=");
+      expect(result()).toBe("2,598,960");
+    });
+
+    it("reaches nPr through 2nd on the multiply key", () => {
+      press("5", "2nd");
+      root.querySelector<HTMLElement>('[data-arg-alt="nPr"]')?.click();
+      press("2", "=");
+      expect(result()).toBe("20");
+    });
+
+    it("reaches factorial through 2nd on the percent key", () => {
+      press("5", "2nd");
+      keyFor("percent").click();
+      press("=");
+      expect(result()).toBe("120");
+    });
+
+    it("types factorial from the keyboard", () => {
+      type("5", "!", "Enter");
+      expect(result()).toBe("120");
+    });
+
+    // The key used to route through insert(), which clears the buffer after
+    // "=" -- so pressing it on an answer threw the answer away.
+    it("applies the factorial key to the answer on screen", () => {
+      press("5", "+", "3", "=");
+      expect(result()).toBe("8");
+      press("2nd");
+      keyFor("percent").click();
+      expect(expression()).toBe("8!");
+      press("=");
+      expect(result()).toBe("40,320");
+    });
+
+    it("applies a typed factorial to the answer too", () => {
+      press("5", "+", "3", "=");
+      type("!", "Enter");
+      expect(result()).toBe("40,320");
+    });
+
+    it("reaches rand through 2nd on Ans", () => {
+      press("2nd");
+      keyFor("ans").click();
+      const value = Number(expression());
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1);
+    });
+
+    it("keeps a random value steady rather than re-rolling it", () => {
+      press("2nd");
+      keyFor("ans").click();
+      const inserted = expression();
+      press("+", "0", "=");
+      expect(Number(result())).toBeCloseTo(Number(inserted), 6);
     });
   });
 

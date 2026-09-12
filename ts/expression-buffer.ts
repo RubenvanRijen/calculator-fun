@@ -1,4 +1,8 @@
-import { balanceParentheses, expectsOperand } from "@/format.ts";
+import {
+  balanceParentheses,
+  expectsOperand,
+  trailingOperatorLength,
+} from "@/format.ts";
 
 function depthOf(text: string): number {
   let depth = 0;
@@ -145,11 +149,21 @@ export class ExpressionBuffer {
     this.#cursor = text.length;
   }
 
+  /** How long the operator before the cursor is, or 0 if there is none. */
+  get trailingOperatorLength(): number {
+    return trailingOperatorLength(this.textBeforeCursor);
+  }
+
   /** True when the text before the cursor ends with a binary operator. */
   get endsWithOperator(): boolean {
-    const before = this.textBeforeCursor;
-    const last = before[before.length - 1] ?? "";
-    return before !== "" && "+-*÷^".includes(last);
+    return this.trailingOperatorLength > 0;
+  }
+
+  /** Remove the operator before the cursor, however many characters it is. */
+  popOperator(): void {
+    const length = this.trailingOperatorLength;
+    if (length === 0) return;
+    this.replaceBeforeCursor(this.textBeforeCursor.slice(0, -length));
   }
 
   /** True when the expression ends where an operand is expected. */

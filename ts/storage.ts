@@ -2,6 +2,7 @@ import type { PersistedState } from "@/interfaces/persisted-state.ts";
 import type { HistoryEntry } from "@/interfaces/history-entry.ts";
 import type { Theme } from "@/types/theme.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
+import type { RegisterName } from "@/types/register-name.ts";
 
 const STORAGE_KEY = "calculator-fun.state";
 
@@ -42,6 +43,7 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
       angleMode?: AngleMode;
       lastAnswer?: number | null;
       entries?: string[];
+      registers?: Partial<Record<RegisterName, number>>;
     } = {};
 
     if (Array.isArray(record["history"])) {
@@ -76,6 +78,15 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
       Number.isFinite(record["lastAnswer"])
     ) {
       state.lastAnswer = record["lastAnswer"];
+    }
+    const saved = record["registers"];
+    if (typeof saved === "object" && saved !== null) {
+      const registers: Partial<Record<RegisterName, number>> = {};
+      for (const name of ["A", "B", "C", "D"] as const) {
+        const value = (saved as Record<string, unknown>)[name];
+        if (typeof value === "number" && Number.isFinite(value)) registers[name] = value;
+      }
+      state.registers = registers;
     }
     if (Array.isArray(record["entries"])) {
       state.entries = record["entries"].filter(

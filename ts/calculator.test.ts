@@ -160,6 +160,78 @@ describe("Calculator", () => {
       type(calculator, ["+"]);
       expect(calculator.expression).toBe("");
     });
+
+    // A minus where an operand is expected is a sign, so a negative number
+    // can simply be typed.
+    it("accepts a minus typed first as a sign", () => {
+      type(calculator, ["-", "2", "^", "2", "="]);
+      expect(calculator.expression).toBe("-2^2");
+      expect(calculator.resultDisplay).toBe("-4");
+    });
+
+    it("accepts a minus after an opening bracket", () => {
+      type(calculator, ["(", "-", "3", ")", "*", "2", "="]);
+      expect(calculator.resultDisplay).toBe("-6");
+    });
+
+    it("still replaces a trailing operator rather than signing it", () => {
+      type(calculator, ["5", "+"]);
+      type(calculator, ["-"]);
+      expect(calculator.expression).toBe("5-");
+    });
+
+    // Each of these was a real defect: nCr and nPr are the first operators
+    // longer than one character, and half the editing rules assumed otherwise.
+    it("replaces a whole multi-character operator", () => {
+      type(calculator, ["5"]);
+      calculator.chooseOperation("nCr");
+      calculator.chooseOperation("÷");
+      expect(calculator.expression).toBe("5÷");
+    });
+
+    it("does not stack two multi-character operators", () => {
+      type(calculator, ["5"]);
+      calculator.chooseOperation("nCr");
+      calculator.chooseOperation("nCr");
+      expect(calculator.expression).toBe("5nCr");
+    });
+
+    it("does not build on a lone sign", () => {
+      calculator.chooseOperation("-");
+      calculator.chooseOperation("+");
+      // Was "+", which can never evaluate.
+      expect(calculator.expression).toBe("-");
+    });
+
+    it("previews the left operand after a multi-character operator", () => {
+      type(calculator, ["5"]);
+      calculator.chooseOperation("nCr");
+      expect(calculator.resultDisplay).toBe("5");
+    });
+
+    it("repeats = after a multi-character operator", () => {
+      type(calculator, ["5"]);
+      calculator.chooseOperation("nCr");
+      type(calculator, ["2", "="]);
+      expect(calculator.resultDisplay).toBe("10");
+      type(calculator, ["="]);
+      expect(calculator.resultDisplay).toBe("45");
+    });
+
+    it("spaces a multi-character operator on the display", () => {
+      type(calculator, ["5"]);
+      calculator.chooseOperation("nCr");
+      type(calculator, ["2"]);
+      expect(calculator.expressionDisplay).toBe("5 nCr 2");
+    });
+
+    it("still ignores any other operator typed first", () => {
+      for (const operator of ["+", "*", "÷", "^"] as const) {
+        calculator.clear();
+        calculator.chooseOperation(operator);
+        expect(calculator.expression, operator).toBe("");
+      }
+    });
   });
 
   describe("delete and clear", () => {
@@ -853,6 +925,75 @@ describe("exact answers", () => {
       expect(exact).toBe("1/3");
       expect(decimal).toBeCloseTo(1 / 3, 11);
     });
+  });
+});
+
+describe("stored values", () => {
+  let calculator: Calculator;
+  beforeEach(() => { calculator = new Calculator(); });
+
+  it("stores and uses a value", () => {
+    type(calculator, ["4", "2"]);
+    calculator.store("A");
+    expect(calculator.registers["A"]).toBe(42);
+
+    calculator.clear();
+    calculator.appendRegister("A");
+    type(calculator, ["+", "8", "="]);
+    expect(calculator.resultDisplay).toBe("50");
+  });
+
+  it("says so rather than doing nothing when there is nothing to store", () => {
+    calculator.store("A");
+    expect(calculator.error).toBe("Nothing to store");
+    expect(calculator.registers["A"]).toBeUndefined();
+  });
+
+  // The display can depend on a register, so changing one has to re-evaluate.
+  it("refreshes the preview when a register is cleared", () => {
+    type(calculator, ["5"]);
+    calculator.store("A");
+    calculator.clear();
+    calculator.appendRegister("A");
+    type(calculator, ["*", "2"]);
+    expect(calculator.resultDisplay).toBe("10");
+
+    calculator.clearRegister("A");
+    expect(calculator.resultDisplay).toBe("");
+  });
+
+  it("refreshes the preview when a register is set", () => {
+    calculator.appendRegister("A");
+    type(calculator, ["*", "2"]);
+    expect(calculator.resultDisplay).toBe("");
+
+    calculator.clear();
+    type(calculator, ["5"]);
+    calculator.store("A");
+    calculator.clear();
+    calculator.appendRegister("A");
+    type(calculator, ["*", "2"]);
+    expect(calculator.resultDisplay).toBe("10");
+  });
+});
+
+describe("factorial after a result", () => {
+  it("applies to the answer rather than discarding it", () => {
+    const calculator = new Calculator();
+    type(calculator, ["5", "+", "3", "="]);
+    expect(calculator.resultDisplay).toBe("8");
+    calculator.appendFactorial();
+    // Was "!", which threw the 8 away.
+    expect(calculator.expression).toBe("8!");
+    type(calculator, ["="]);
+    expect(calculator.resultDisplay).toBe("40,320");
+  });
+
+  it("does nothing after an operator", () => {
+    const calculator = new Calculator();
+    type(calculator, ["5", "+"]);
+    calculator.appendFactorial();
+    expect(calculator.expression).toBe("5+");
   });
 });
 
