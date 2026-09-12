@@ -22,8 +22,9 @@ CMD ["npm", "run", "dev"]
 # in `npm test` locally and in CI, where the docker job already waits on the js
 # and ts jobs. Keeping them out here makes `docker compose up --build` fast.
 FROM base AS build
-COPY tsconfig.json ./
+COPY tsconfig.json vite.config.ts index.html styles.css ./
 COPY ts ./ts
+COPY public ./public
 RUN npm run build
 
 # --- prod -------------------------------------------------------------------
@@ -38,9 +39,9 @@ RUN sed -i -E \
  && grep -qE '^worker_processes[[:space:]]+2;' /etc/nginx/nginx.conf \
  && nginx -t
 WORKDIR /usr/share/nginx/html
-COPY index.html styles.css favicon.svg ./
-COPY examples ./examples
-COPY --from=build /app/dist ./dist
+# Vite emits the whole site -- index.html, hashed assets and everything from
+# public/ -- so dist/ is the web root rather than one folder inside it.
+COPY --from=build /app/dist ./
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD wget -q --spider http://localhost/ || exit 1

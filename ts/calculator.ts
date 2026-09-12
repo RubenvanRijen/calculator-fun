@@ -1,7 +1,7 @@
-import { evaluateString, isOperation } from "./expression.js";
-import { ExpressionBuffer } from "./expression-buffer.js";
-import { HistoryLog } from "./history-log.js";
-import { MemoryRegister } from "./memory-register.js";
+import { evaluateString, isOperation } from "@/expression.ts";
+import { ExpressionBuffer } from "@/expression-buffer.ts";
+import { HistoryLog } from "@/history-log.ts";
+import { MemoryRegister } from "@/memory-register.ts";
 import {
   balanceParentheses,
   expectsOperand,
@@ -10,10 +10,10 @@ import {
   formatOperand,
   roundResult,
   trailingOperation,
-} from "./format.js";
-import type { Operation } from "./types/operation.js";
-import type { HistoryEntry } from "./interfaces/history-entry.js";
-import type { AngleMode } from "./types/angle-mode.js";
+} from "@/format.ts";
+import type { Operation } from "@/types/operation.ts";
+import type { HistoryEntry } from "@/interfaces/history-entry.ts";
+import type { AngleMode } from "@/types/angle-mode.ts";
 
 /** How many past expressions the up/down arrows can walk back through. */
 const MAX_ENTRIES = 50;
@@ -566,4 +566,4 @@ export {
   formatExpressionWithCursor,
   formatOperand,
   trailingOperation,
-} from "./format.js";
+} from "@/format.ts";

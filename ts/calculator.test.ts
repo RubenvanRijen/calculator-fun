@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { Calculator, formatExpression, formatOperand, trailingOperation } from "./calculator.js";
-import type { Operation } from "./types/operation.js";
+import { Calculator, formatExpression, formatOperand, trailingOperation } from "@/calculator.ts";
+import type { Operation } from "@/types/operation.ts";
 
 /** Drive the calculator one keypress at a time, as a user would. */
 function type(calculator: Calculator, keys: string[]): Calculator {

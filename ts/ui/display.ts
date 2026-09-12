@@ -1,4 +1,4 @@
-import type { Calculator } from "../calculator.js";
+import type { Calculator } from "@/calculator.ts";
 
 /**
  * The output area: the expression line, the result line, and the three badges.

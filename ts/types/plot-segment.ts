@@ -1,4 +1,4 @@
-import type { PlotPoint } from "../interfaces/plot-point.js";
+import type { PlotPoint } from "@/interfaces/plot-point.ts";
 
 /**
  * A run of consecutive points with no break in between. A function such as

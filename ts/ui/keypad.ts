@@ -1,6 +1,6 @@
-import { isOperation } from "../expression.js";
-import type { Calculator } from "../calculator.js";
-import type { AngleMode } from "../types/angle-mode.js";
+import { isOperation } from "@/expression.ts";
+import type { Calculator } from "@/calculator.ts";
+import type { AngleMode } from "@/types/angle-mode.ts";
 
 /** How long a key flashes when driven from the keyboard. */
 const FLASH_MS = 120;

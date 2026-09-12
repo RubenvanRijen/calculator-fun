@@ -1,4 +1,4 @@
-import type { HistoryEntry } from "./interfaces/history-entry.js";
+import type { HistoryEntry } from "@/interfaces/history-entry.ts";
 
 /** How many past calculations to keep. Oldest are dropped beyond this. */
 const MAX_HISTORY = 50;

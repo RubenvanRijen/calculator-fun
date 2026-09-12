@@ -24,7 +24,7 @@ export default defineConfig({
   ],
   webServer: {
     // Build, then serve the static output exactly as nginx would.
-    command: `npm run build && npx serve --no-clipboard --single=false --listen ${PORT} .`,
+    command: `npm run build && npx serve --no-clipboard --single=false --listen ${PORT} dist`,
     url: `http://127.0.0.1:${PORT}/index.html`,
     reuseExistingServer: !process.env["CI"],
     timeout: 120_000,

@@ -1,6 +1,6 @@
-import type { TokenKind } from "../enums/token-kind.js";
-import type { Operation } from "./operation.js";
-import type { FunctionName } from "./function-name.js";
+import type { TokenKind } from "@/enums/token-kind.ts";
+import type { Operation } from "@/types/operation.ts";
+import type { FunctionName } from "@/types/function-name.ts";
 
 /** One unit of a parsed expression. */
 export type Token =

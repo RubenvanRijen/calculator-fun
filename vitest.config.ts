@@ -1,6 +1,10 @@
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./ts", import.meta.url)) },
+  },
   test: {
     globals: false,
     // Logic tests run in plain Node; the DOM-wiring tests opt into jsdom with

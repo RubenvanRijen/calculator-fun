@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { loadState, saveState, clearState } from "./storage.js";
+import { loadState, saveState, clearState } from "@/storage.ts";
 
 /** A minimal in-memory Storage, so these tests need no browser. */
 function memoryStorage(initial: Record<string, string> = {}): Storage {

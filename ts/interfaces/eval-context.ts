@@ -1,4 +1,4 @@
-import type { AngleMode } from "../types/angle-mode.js";
+import type { AngleMode } from "@/types/angle-mode.ts";
 
 /**
  * Everything an expression needs beyond its own tokens. Both fields are

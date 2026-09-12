@@ -6,10 +6,12 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "outDir": "dist",
-    "rootDir": "ts",
-    "sourceMap": true,
-    "declaration": true,
+    // Vite emits the build; tsc only checks types, which is what lets the
+    // source use "@/…" aliases and ".ts" specifiers.
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["ts/*"] },
+    "allowImportingTsExtensions": true,
 
     /* Strictness. `strict` is the baseline; the rest are the extras that
        actually catch things in this codebase. */

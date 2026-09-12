@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { plot } from "./graph.js";
+import { plot } from "@/graph.ts";
 
 /** Every point across every segment, for assertions that ignore breaks. */
 function allPoints(result: ReturnType<typeof plot>) {

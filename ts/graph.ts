@@ -1,7 +1,7 @@
-import { tokenize, toRpn, evaluateRpn } from "./expression.js";
-import type { PlotPoint } from "./interfaces/plot-point.js";
-import type { PlotSegment } from "./types/plot-segment.js";
-import type { PlotResult } from "./interfaces/plot-result.js";
+import { tokenize, toRpn, evaluateRpn } from "@/expression.ts";
+import type { PlotPoint } from "@/interfaces/plot-point.ts";
+import type { PlotSegment } from "@/types/plot-segment.ts";
+import type { PlotResult } from "@/interfaces/plot-result.ts";
 
 /** How many points to sample across the visible range. */
 export const DEFAULT_SAMPLES = 400;

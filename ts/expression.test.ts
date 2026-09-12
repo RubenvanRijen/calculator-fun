@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateString, tokenize, toRpn, isOperation } from "./expression.js";
+import { evaluateString, tokenize, toRpn, isOperation } from "@/expression.ts";
 
 describe("precedence", () => {
   it.each([

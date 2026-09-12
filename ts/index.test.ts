@@ -2,8 +2,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { setupCalculator } from "./index.js";
-import type { CalculatorHandle } from "./interfaces/calculator-handle.js";
+import { setupCalculator } from "@/index.ts";
+import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
 
 // Read the real page rather than a hand-copied fixture, so these tests cannot
 // silently drift away from the markup that actually ships.

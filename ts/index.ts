@@ -1,12 +1,12 @@
-import { Calculator } from "./calculator.js";
-import { loadState, saveState } from "./storage.js";
-import { applyTheme, otherTheme, preferredTheme } from "./theme.js";
-import { Display } from "./ui/display.js";
-import { HistoryPanel } from "./ui/history-panel.js";
-import { Keypad } from "./ui/keypad.js";
-import { setupGraphPanel } from "./ui/graph-panel.js";
-import type { CalculatorHandle } from "./interfaces/calculator-handle.js";
-import type { Theme } from "./types/theme.js";
+import { Calculator } from "@/calculator.ts";
+import { loadState, saveState } from "@/storage.ts";
+import { applyTheme, otherTheme, preferredTheme } from "@/theme.ts";
+import { Display } from "@/ui/display.ts";
+import { HistoryPanel } from "@/ui/history-panel.ts";
+import { Keypad } from "@/ui/keypad.ts";
+import { setupGraphPanel } from "@/ui/graph-panel.ts";
+import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
+import type { Theme } from "@/types/theme.ts";
 
 /**
  * Wire the pieces together against the markup in `root`. This is a composition

@@ -1,5 +1,5 @@
-import { plot } from "../graph.js";
-import type { PlotResult } from "../interfaces/plot-result.js";
+import { plot } from "@/graph.ts";
+import type { PlotResult } from "@/interfaces/plot-result.ts";
 
 /** The SVG user-space the plot is drawn in. */
 const PLOT_WIDTH = 280;

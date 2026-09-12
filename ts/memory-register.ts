@@ -1,4 +1,4 @@
-import { roundResult } from "./format.js";
+import { roundResult } from "@/format.ts";
 
 /** The M register behind the MC / MR / M+ / M- keys. */
 export class MemoryRegister {

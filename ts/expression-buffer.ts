@@ -1,4 +1,4 @@
-import { balanceParentheses, expectsOperand } from "./format.js";
+import { balanceParentheses, expectsOperand } from "@/format.ts";
 
 function depthOf(text: string): number {
   let depth = 0;

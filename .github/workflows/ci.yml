@@ -39,7 +39,7 @@ jobs:
         run: npm run build
 
       - name: Check dist/ was produced
-        run: test -f dist/index.js && test -f dist/calculator.js
+        run: test -f dist/index.html && ls dist/assets/*.js >/dev/null
 
   coverage:
     name: Coverage
@@ -115,8 +115,8 @@ jobs:
             sleep 1
           done
           curl -fsS http://localhost:8080/ | grep -q "calculator-grid"
-          curl -fsS http://localhost:8080/dist/calculator.js >/dev/null
-          curl -fsS http://localhost:8080/dist/expression.js >/dev/null
-          curl -fsS http://localhost:8080/styles.css >/dev/null
           curl -fsS http://localhost:8080/favicon.svg >/dev/null
+          # the bundle is hashed, so find it in the served markup
+          asset=$(curl -fsS http://localhost:8080/ | grep -o '/assets/[^"]*\.js' | head -1)
+          curl -fsS "http://localhost:8080$asset" >/dev/null
           docker rm -f calc

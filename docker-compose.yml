@@ -20,8 +20,7 @@ services:
       - ./ts:/app/ts
       - ./index.html:/app/index.html
       - ./styles.css:/app/styles.css
-      - ./favicon.svg:/app/favicon.svg
-      - ./examples:/app/examples
+      - ./public:/app/public
       - ./tsconfig.json:/app/tsconfig.json
       - ./vite.config.ts:/app/vite.config.ts
       # Keep the container's node_modules; the host's are not in the image.

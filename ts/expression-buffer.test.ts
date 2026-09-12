@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { ExpressionBuffer } from "./expression-buffer.js";
+import { ExpressionBuffer } from "@/expression-buffer.ts";
 
 describe("ExpressionBuffer", () => {
   let buffer: ExpressionBuffer;

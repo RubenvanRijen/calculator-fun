@@ -1,28 +1,23 @@
-import { defineConfig, type Plugin } from "vite";
+import { fileURLToPath, URL } from "node:url";
+import { defineConfig } from "vite";
 
 /**
- * In dev, point the page at the TypeScript entry instead of the compiled
- * output, so Vite transpiles and hot-reloads it directly and no `tsc --watch`
- * has to run alongside. Production is unaffected: it is built with plain `tsc`
- * into dist/ and served by nginx, with no bundler involved.
+ * Vite builds the site and serves it in development. It is the only reason the
+ * project can use `@/…` aliases and `.ts` import specifiers: `tsc` never
+ * rewrites either, so a bundler has to resolve them.
  */
-function serveTypeScriptFromSource(): Plugin {
-  return {
-    name: "serve-typescript-from-source",
-    apply: "serve",
-    // `order: "pre"` runs this before Vite's own HTML plugin registers the
-    // script in the module graph, so it never tries to load the unbuilt
-    // /dist/index.js and warn about it.
-    transformIndexHtml: {
-      order: "pre",
-      handler: (html) => html.replace("/dist/index.js", "/ts/index.ts"),
-    },
-  };
-}
-
 export default defineConfig({
   root: ".",
-  plugins: [serveTypeScriptFromSource()],
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./ts", import.meta.url)),
+    },
+  },
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    sourcemap: true,
+  },
   server: {
     // 0.0.0.0 so the port is reachable from outside the container.
     host: "0.0.0.0",

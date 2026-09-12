@@ -1,4 +1,4 @@
-import type { Theme } from "./types/theme.js";
+import type { Theme } from "@/types/theme.ts";
 
 /** The theme the operating system asks for, when the user has no preference. */
 export function preferredTheme(view: Window = globalThis.window): Theme {

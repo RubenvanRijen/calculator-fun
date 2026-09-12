@@ -1,9 +1,9 @@
-import { TokenKind } from "./enums/token-kind.js";
-import type { Token } from "./types/token.js";
-import type { Operation } from "./types/operation.js";
-import type { FunctionName } from "./types/function-name.js";
-import type { AngleMode } from "./types/angle-mode.js";
-import type { EvalContext } from "./interfaces/eval-context.js";
+import { TokenKind } from "@/enums/token-kind.ts";
+import type { Token } from "@/types/token.ts";
+import type { Operation } from "@/types/operation.ts";
+import type { FunctionName } from "@/types/function-name.ts";
+import type { AngleMode } from "@/types/angle-mode.ts";
+import type { EvalContext } from "@/interfaces/eval-context.ts";
 
 /**
  * Binding strength. Higher binds tighter, so 2 + 3 * 4 is 14 rather than 20.

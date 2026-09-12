@@ -1,4 +1,4 @@
-import type { Calculator } from "../calculator.js";
+import type { Calculator } from "@/calculator.ts";
 
 /** What `setupCalculator` hands back, so a caller can also tear it down. */
 export interface CalculatorHandle {

@@ -1,7 +1,7 @@
-import type { PersistedState } from "./interfaces/persisted-state.js";
-import type { HistoryEntry } from "./interfaces/history-entry.js";
-import type { Theme } from "./types/theme.js";
-import type { AngleMode } from "./types/angle-mode.js";
+import type { PersistedState } from "@/interfaces/persisted-state.ts";
+import type { HistoryEntry } from "@/interfaces/history-entry.ts";
+import type { Theme } from "@/types/theme.ts";
+import type { AngleMode } from "@/types/angle-mode.ts";
 
 const STORAGE_KEY = "calculator-fun.state";
 

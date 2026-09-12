@@ -23,6 +23,7 @@ ts/
   enums/              one enum per file
 e2e/                Playwright specs (real browser)
 docker/             Dockerfile + nginx config
+public/             copied verbatim into the build (favicon)
 index.html          the page
 ```
 
@@ -47,9 +48,20 @@ For a production-style build:
 npm run build        # tsc -> dist/, then serve the folder
 ```
 
-`tsc` emits plain ES modules with their `.js` import extensions intact, so the
-browser loads `dist/index.js` directly. There is no bundler in the output —
-Vite is used only as the dev server.
+Vite builds the site and serves it in development. `tsc` is the type checker
+and emits nothing.
+
+That split is what lets the source use `@/…` aliases and `.ts` import
+specifiers: `tsc` rewrites neither — it will not even emit an aliased `.ts`
+import, it errors — so a bundler has to resolve them.
+
+```ts
+import { Calculator } from "@/calculator.ts";
+import type { Operation } from "@/types/operation.ts";
+```
+
+`@` is `ts/`, declared in `tsconfig.json` (for the checker), `vite.config.ts`
+(for the build and dev server) and `vitest.config.ts` (for the tests).
 
 ## Features
 
@@ -177,7 +189,7 @@ events and pointer tracing.
 | Command | Config | Covers |
 | --- | --- | --- |
 | `npm run typecheck:src` | `tsconfig.json` | `ts/` sources |
-| `npm run typecheck:tests` | `tsconfig.test.json` | tests + `vite`/`vitest` configs |
+| `npm run typecheck:tests` | `tsconfig.test.json` | tests, e2e and the tooling configs |
 
 `npm run typecheck` runs both; `npm run check` runs those plus the tests.
 
@@ -194,7 +206,7 @@ docker compose --profile dev up --build dev  # http://localhost:5173  (hot reloa
 ```
 
 Stages: `base` (node + deps) → `dev` (Vite dev server, source bind-mounted) →
-`build` (`tsc` → `dist/`) → `prod` (nginx serving static files, no node).
+`build` (`vite build` → `dist/`) → `prod` (nginx serving `dist/`, no node).
 
 The image deliberately does **not** run the test suite — that belongs in
 `npm test` and in CI, where the docker job waits on the test job. Keeping tests

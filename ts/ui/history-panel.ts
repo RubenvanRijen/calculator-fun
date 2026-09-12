@@ -1,5 +1,5 @@
-import type { Calculator } from "../calculator.js";
-import type { HistoryEntry } from "../interfaces/history-entry.js";
+import type { Calculator } from "@/calculator.ts";
+import type { HistoryEntry } from "@/interfaces/history-entry.ts";
 
 /**
  * The list of past calculations. Re-rendered wholesale on every update, which
