@@ -1,4 +1,5 @@
 import type { SeriesEntry } from "@/interfaces/series-entry.ts";
+import { Listeners } from "@/listeners.ts";
 
 /** How many functions the calculator holds, as Y1 to Y4. */
 export const SERIES_COUNT = 4;
@@ -13,7 +14,7 @@ export const SERIES_COUNT = 4;
  */
 export class FunctionSeries {
   readonly #expressions: string[];
-  readonly #listeners: (() => void)[] = [];
+  readonly #listeners = new Listeners();
 
   constructor(initial: readonly string[] = []) {
     this.#expressions = Array.from(
@@ -52,24 +53,11 @@ export class FunctionSeries {
     if (this.#expressions[index] === trimmed) return;
 
     this.#expressions[index] = trimmed;
-    for (const listener of this.#listeners) listener();
+    this.#listeners.notify();
   }
 
-  /**
-   * Run `listener` whenever any expression changes, until `signal` aborts.
-   *
-   * The signal is not optional. Every other listener in the UI is registered
-   * against the one controller so tearing down is a single abort; a
-   * subscription here that outlived it would hold a destroyed panel's render
-   * closure, and with it the markup that panel was drawing into.
-   */
+  /** Run `listener` whenever any expression changes, until `signal` aborts. */
   onChange(listener: () => void, signal: AbortSignal): void {
-    if (signal.aborted) return;
-    this.#listeners.push(listener);
-
-    signal.addEventListener("abort", () => {
-      const at = this.#listeners.indexOf(listener);
-      if (at !== -1) this.#listeners.splice(at, 1);
-    }, { once: true });
+    this.#listeners.add(listener, signal);
   }
 }
