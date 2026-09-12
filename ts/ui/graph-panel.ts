@@ -2,6 +2,19 @@ import { compileCurve, plotAll } from "@/graph.ts";
 import { derivative, findExtremum, findIntersection, findRoot, integrate } from "@/analysis.ts";
 import { SERIES_COUNT } from "@/function-series.ts";
 import { readNumber } from "@/ui/read-number.ts";
+import {
+  PLOT_HEIGHT,
+  PLOT_WIDTH,
+  areaD,
+  areaShape,
+  axisLine,
+  curvePath,
+  dot,
+  traceMarker,
+  segmentD,
+} from "@/ui/graph-shapes.ts";
+import { boundText, windowAround } from "@/ui/graph-window.ts";
+import { traceText, trim } from "@/ui/graph-readout.ts";
 import type { FunctionSeries } from "@/function-series.ts";
 import type { MultiPlotResult } from "@/interfaces/multi-plot-result.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
@@ -9,21 +22,8 @@ import type { Curve } from "@/types/curve.ts";
 import type { PlotPoint } from "@/interfaces/plot-point.ts";
 import type { ExtremumKind } from "@/types/extremum-kind.ts";
 
-/** The SVG user-space the plot is drawn in. */
-const PLOT_WIDTH = 280;
-const PLOT_HEIGHT = 200;
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-/** How many points the shaded region of an integral is drawn from. */
-const REGION_STEPS = 240;
-
 /** How far one press of the trace arrows moves, as a share of the range. */
 const TRACE_STEP = 1 / 60;
-
-/** Short, readable numbers for the readout. */
-function trim(value: number): string {
-  return parseFloat(value.toPrecision(4)).toString();
-}
 
 /**
  * The ƒ(x) tab: up to four functions, a range that can be zoomed, a trace that
@@ -83,16 +83,6 @@ export function setupGraphPanel(
   const curveFor = (index: number): Curve | null =>
     compileCurve(series.at(index), contextOf);
 
-  function line(x1: number, y1: number, x2: number, y2: number): SVGElement {
-    const element = doc.createElementNS(SVG_NS, "line");
-    element.setAttribute("x1", String(x1));
-    element.setAttribute("y1", String(y1));
-    element.setAttribute("x2", String(x2));
-    element.setAttribute("y2", String(y2));
-    element.setAttribute("class", "plot-axis");
-    return element;
-  }
-
   const toScreenX = (x: number): number =>
     ((x - range.xMin) / (range.xMax - range.xMin)) * PLOT_WIDTH;
 
@@ -150,11 +140,8 @@ export function setupGraphPanel(
       // points, and a curve that does not fit is clipped. Widening to hold
       // both instead would squash a scatter of 2 to 5 into a band at the
       // bottom the moment an unrelated x^2 was still in Y1.
-      const ys = scatter.map((point) => point.y);
-      const low = Math.min(...ys);
-      const high = Math.max(...ys);
-      const margin = Math.max((high - low) * 0.1, 1);
-      view = { yMin: low - margin, yMax: high + margin };
+      const fitted = windowAround(scatter.map((point) => point.y));
+      view = { yMin: fitted.min, yMax: fitted.max };
     } else {
       view = { yMin: plotted.yMin, yMax: plotted.yMax };
     }
@@ -162,84 +149,32 @@ export function setupGraphPanel(
     svg.replaceChildren();
 
     if (range.xMin < 0 && range.xMax > 0) {
-      svg.append(line(toScreenX(0), 0, toScreenX(0), PLOT_HEIGHT));
+      svg.append(axisLine(doc, toScreenX(0), 0, toScreenX(0), PLOT_HEIGHT));
     }
     if (view.yMin < 0 && view.yMax > 0) {
-      svg.append(line(0, toScreenY(0), PLOT_WIDTH, toScreenY(0)));
+      svg.append(axisLine(doc, 0, toScreenY(0), PLOT_WIDTH, toScreenY(0)));
     }
 
     if (shaded !== null) {
-      const curve = curveFor(shaded.series);
-      const baseline = Math.min(Math.max(toScreenY(0), 0), PLOT_HEIGHT);
-      const clamp = (value: number): number =>
-        Math.min(Math.max(toScreenY(value), 0), PLOT_HEIGHT);
-
-      // Sampled from the curve rather than taken from the drawn segments: the
-      // plot drops whatever runs past its magnitude cutoff, and a region built
-      // from what is left would leave out the very spans that decided the
-      // total. Clamped to the box so a spike shades to the edge instead of
-      // escaping it.
-      const points: string[] = [];
-      for (let index = 0; index <= REGION_STEPS; index += 1) {
-        const x = range.xMin + ((range.xMax - range.xMin) * index) / REGION_STEPS;
-        let y: number;
-        try {
-          y = curve === null ? Number.NaN : curve(x);
-        } catch {
-          y = Number.NaN;
-        }
-        if (!Number.isFinite(y)) continue;
-        points.push(`L${toScreenX(x).toFixed(2)} ${clamp(y).toFixed(2)}`);
-      }
-
-      if (points.length > 1) {
-        const region = doc.createElementNS(SVG_NS, "path");
-        region.setAttribute(
-          "d",
-          `M0 ${baseline.toFixed(2)} ${points.join(" ")} ` +
-          `L${PLOT_WIDTH.toFixed(2)} ${baseline.toFixed(2)} Z`
-        );
-        region.setAttribute("class", "plot-area");
-        region.setAttribute("data-graph-area", String(shaded.series));
-        svg.append(region);
-      }
+      const d = areaD(
+        curveFor(shaded.series), range.xMin, range.xMax, toScreenX, toScreenY
+      );
+      if (d !== null) svg.append(areaShape(doc, d, shaded.series));
     }
 
     plotted.series.forEach((result, index) => {
       for (const segment of result.segments) {
-        const path = doc.createElementNS(SVG_NS, "path");
-        path.setAttribute(
-          "d",
-          segment
-            .map((point, at) =>
-              `${at === 0 ? "M" : "L"}${toScreenX(point.x).toFixed(2)} ${toScreenY(point.y).toFixed(2)}`
-            )
-            .join(" ")
-        );
-        path.setAttribute("class", "plot-line");
-        path.setAttribute("data-series", String(index));
-        svg.append(path);
+        svg.append(curvePath(doc, segmentD(segment, toScreenX, toScreenY), index));
       }
     });
 
     // After the curves, so the fitted line does not paint over the data it
     // was fitted to.
     for (const point of scatter) {
-      const dot = doc.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("r", "2.5");
-      dot.setAttribute("cx", toScreenX(point.x).toFixed(2));
-      dot.setAttribute("cy", toScreenY(point.y).toFixed(2));
-      dot.setAttribute("class", "plot-point");
-      dot.setAttribute("data-graph-point", "");
-      svg.append(dot);
+      svg.append(dot(doc, toScreenX(point.x), toScreenY(point.y)));
     }
 
-    const marker = doc.createElementNS(SVG_NS, "circle");
-    marker.setAttribute("r", "3.5");
-    marker.setAttribute("class", "plot-marker");
-    marker.setAttribute("data-graph-marker", "");
-    marker.setAttribute("visibility", "hidden");
-    svg.append(marker);
+    svg.append(traceMarker(doc));
 
     // A trace already running should survive a redraw -- but only while it is
     // still on screen. Replaying one from the old window would leave the
@@ -291,7 +226,7 @@ export function setupGraphPanel(
       marker.setAttribute("data-series", String(series));
     }
     if (readout) {
-      readout.textContent = `Y${series + 1}   x = ${trim(x)}   y = ${trim(y)}`;
+      readout.textContent = traceText(series, x, y);
     }
   }
 
@@ -322,8 +257,8 @@ export function setupGraphPanel(
   function scaleRange(factor: number): void {
     const centre = (range.xMin + range.xMax) / 2;
     const half = ((range.xMax - range.xMin) / 2) * factor;
-    if (minInput) minInput.value = String(parseFloat((centre - half).toPrecision(6)));
-    if (maxInput) maxInput.value = String(parseFloat((centre + half).toPrecision(6)));
+    if (minInput) minInput.value = boundText(centre - half);
+    if (maxInput) maxInput.value = boundText(centre + half);
     render();
   }
 
