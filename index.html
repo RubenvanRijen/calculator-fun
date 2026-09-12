@@ -83,6 +83,7 @@
                 <button data-tab="history" class="tab is-active" role="tab" type="button"
                     aria-selected="true">History</button>
                 <button data-tab="graph" class="tab" role="tab" type="button" aria-selected="false">ƒ(x)</button>
+                <button data-tab="table" class="tab" role="tab" type="button" aria-selected="false">Table</button>
                 <button data-tab="vars" class="tab" role="tab" type="button" aria-selected="false">Vars</button>
             </div>
 
@@ -93,6 +94,40 @@
                 </div>
                 <p data-history-empty class="muted">Nothing yet.</p>
                 <ul data-history-list class="history-list"></ul>
+            </section>
+
+            <section data-panel="table" class="panel-body" hidden>
+                <p class="muted">
+                    The same functions as the &fnof;(x) tab, read off as numbers.
+                    Type them there; this shows every one that has something in it.
+                </p>
+
+                <div class="range">
+                    <label class="field field-inline">
+                        <span class="field-label">start</span>
+                        <input data-table-start class="field-input" type="number" value="0" step="1">
+                    </label>
+                    <label class="field field-inline">
+                        <span class="field-label">&Delta;x</span>
+                        <input data-table-step class="field-input" type="number" value="1" step="0.1">
+                    </label>
+                </div>
+
+                <div class="examples">
+                    <button data-table-page="-1" class="chip" type="button" aria-label="Previous rows">&#x25B2;</button>
+                    <button data-table-page="1" class="chip" type="button" aria-label="Next rows">&#x25BC;</button>
+                </div>
+
+                <p data-table-empty class="muted" hidden>No functions yet &mdash; type one in the &fnof;(x) tab.</p>
+
+                <div class="table-wrap">
+                    <table class="value-table">
+                        <thead>
+                            <tr data-table-head></tr>
+                        </thead>
+                        <tbody data-table-body></tbody>
+                    </table>
+                </div>
             </section>
 
             <section data-panel="vars" class="panel-body" hidden>

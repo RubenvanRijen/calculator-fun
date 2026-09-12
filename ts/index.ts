@@ -6,6 +6,9 @@ import { HistoryPanel } from "@/ui/history-panel.ts";
 import { RegisterPanel } from "@/ui/register-panel.ts";
 import { Keypad } from "@/ui/keypad.ts";
 import { setupGraphPanel } from "@/ui/graph-panel.ts";
+import { setupTablePanel } from "@/ui/table-panel.ts";
+import { FunctionSeries, SERIES_COUNT } from "@/function-series.ts";
+import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
 import type { Theme } from "@/types/theme.ts";
 
@@ -65,14 +68,31 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     display.render(calculator);
     historyPanel.render(calculator);
     registerPanel.render();
+    // "Ans*x" is plotted and tabulated against the last answer, so pressing =
+    // changes what those two panels should be showing. Each render is a no-op
+    // while its own panel is hidden, so this costs nothing on the History tab.
+    graph.render();
+    table.render();
     persist();
   }
 
   const keypad = new Keypad(root, doc, calculator, signal, update);
-  const graph = setupGraphPanel(root, doc, signal, () => ({
+  // The graph and the table are two views of one set of functions, so the
+  // expressions live outside both of them.
+  const series = new FunctionSeries(
+    // Keyed by the attribute, the way the panel looks them up. Reading them in
+    // document order would put Y3's text into Y2 the day the markup is
+    // reordered, and the panel would then disagree with the model.
+    Array.from({ length: SERIES_COUNT }, (_, index) =>
+      root.querySelector<HTMLInputElement>(`[data-graph-input="${index}"]`)?.value ?? ""
+    )
+  );
+  const graphContext = (): EvalContext => ({
     registers: calculator.registers,
     ans: calculator.lastAnswer ?? undefined,
-  }));
+  });
+  const graph = setupGraphPanel(root, doc, signal, series, graphContext);
+  const table = setupTablePanel(root, doc, signal, series, graphContext);
 
   // Anything clicked outside the keypad -- a tab, a history entry, the theme
   // toggle, a graph chip -- also spends a pending 2nd. Otherwise the shift
@@ -123,7 +143,10 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   const tabs = [...root.querySelectorAll<HTMLElement>("[data-tab]")];
   const panels = [...root.querySelectorAll<HTMLElement>("[data-panel]")];
   /** What to do when a panel becomes visible, keyed by its name. */
-  const onShow: Record<string, () => void> = { graph: graph.render };
+  const onShow: Record<string, () => void> = {
+    graph: graph.render,
+    table: table.render,
+  };
 
   for (const tab of tabs) {
     tab.addEventListener(

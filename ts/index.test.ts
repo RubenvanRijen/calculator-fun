@@ -992,6 +992,148 @@ describe("setupCalculator", () => {
     });
   });
 
+  describe("table", () => {
+    const rows = () => [...root.querySelectorAll("[data-table-body] tr")];
+    const headers = () =>
+      [...root.querySelectorAll("[data-table-head] th")].map((th) => th.textContent);
+    const cells = (row: number) =>
+      [...(rows()[row]?.querySelectorAll("th, td") ?? [])].map((cell) => cell.textContent);
+    const setFunction = (index: number, text: string) => {
+      const input = root.querySelector<HTMLInputElement>(`[data-graph-input="${index}"]`);
+      if (input) input.value = text;
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+
+    beforeEach(() => {
+      button("Table").click();
+    });
+
+    it("has a tab and a panel", () => {
+      expect(root.querySelector('[data-panel="table"]')).not.toBeNull();
+      expect(root.querySelector('[data-tab="table"]')).not.toBeNull();
+    });
+
+    it("tabulates the default function", () => {
+      // Y1 defaults to x^2-2, from 0 in steps of 1.
+      expect(headers()).toEqual(["x", "Y1"]);
+      expect(cells(0)).toEqual(["0", "-2"]);
+      expect(cells(1)).toEqual(["1", "-1"]);
+      expect(cells(3)).toEqual(["3", "7"]);
+    });
+
+    it("shows the same functions as the graph, as they are typed", () => {
+      setFunction(1, "2*x");
+      expect(headers()).toEqual(["x", "Y1", "Y2"]);
+      expect(cells(2)).toEqual(["2", "2", "4"]);
+    });
+
+    it("drops a column when its function is cleared", () => {
+      setFunction(1, "2*x");
+      expect(headers()).toHaveLength(3);
+      setFunction(1, "");
+      expect(headers()).toEqual(["x", "Y1"]);
+    });
+
+    it("says so when there is nothing to tabulate", () => {
+      const empty = () => root.querySelector<HTMLElement>("[data-table-empty]");
+      // Y1 has a function to begin with, so the message starts out of the way.
+      expect(empty()?.hidden).toBe(true);
+
+      setFunction(0, "");
+      expect(empty()?.hidden).toBe(false);
+      expect(rows()).toHaveLength(0);
+
+      setFunction(0, "x");
+      expect(empty()?.hidden).toBe(true);
+    });
+
+    it("follows the start and step", () => {
+      const start = root.querySelector<HTMLInputElement>("[data-table-start]");
+      const step = root.querySelector<HTMLInputElement>("[data-table-step]");
+      if (start) start.value = "10";
+      if (step) step.value = "0.5";
+      step?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      expect(cells(0)?.[0]).toBe("10");
+      expect(cells(1)?.[0]).toBe("10.5");
+    });
+
+    it("pages through the rows", () => {
+      const firstX = cells(0)?.[0];
+      root.querySelector<HTMLElement>('[data-table-page="1"]')?.click();
+      expect(cells(0)?.[0]).not.toBe(firstX);
+
+      root.querySelector<HTMLElement>('[data-table-page="-1"]')?.click();
+      expect(cells(0)?.[0]).toBe(firstX);
+    });
+
+    it("goes back to the top when a function changes", () => {
+      root.querySelector<HTMLElement>('[data-table-page="1"]')?.click();
+      expect(cells(0)?.[0]).not.toBe("0");
+
+      setFunction(0, "x+1");
+      expect(cells(0)?.[0]).toBe("0");
+    });
+
+    it("refuses a step of zero rather than printing one row forever", () => {
+      const step = root.querySelector<HTMLInputElement>("[data-table-step]");
+      if (step) step.value = "0";
+      step?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      expect(cells(0)?.[0]).not.toBe(cells(1)?.[0]);
+    });
+
+    it("marks a value the function has no answer for", () => {
+      setFunction(0, "sqrt(x)");
+      const start = root.querySelector<HTMLInputElement>("[data-table-start]");
+      if (start) start.value = "-4";
+      start?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      expect(cells(0)).toEqual(["-4", "—"]);
+      expect(cells(4)).toEqual(["0", "0"]);
+    });
+
+    it("follows Ans when the keypad computes a new one", () => {
+      setFunction(0, "Ans*x");
+      press("5");
+      press("=");
+
+      // Ans is 5, so the row for x = 2 is 10. Before this, the table kept the
+      // numbers it had worked out with whatever Ans used to be.
+      expect(cells(2)).toEqual(["2", "10"]);
+    });
+
+    it("keeps x readable when the step is finer than the start", () => {
+      const start = root.querySelector<HTMLInputElement>("[data-table-start]");
+      const step = root.querySelector<HTMLInputElement>("[data-table-step]");
+      if (start) start.value = "100000";
+      if (step) step.value = "0.001";
+      step?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      // Eight significant figures would round every one of these to "100000".
+      expect(cells(0)?.[0]).toBe("100000");
+      expect(cells(1)?.[0]).toBe("100000.001");
+      expect(cells(2)?.[0]).toBe("100000.002");
+    });
+
+    it("keeps a tiny step tiny instead of jumping it to 1", () => {
+      const step = root.querySelector<HTMLInputElement>("[data-table-step]");
+      // Below the floor that stops a step of zero repeating one row forever.
+      // A tiny step is how a limit gets looked at, so the floor is where it
+      // lands -- substituting 1 would answer a different question in silence.
+      if (step) step.value = "1e-10";
+      step?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      expect(cells(1)?.[0]).toBe("1e-9");
+      expect(cells(2)?.[0]).toBe("2e-9");
+    });
+
+    it("marks a function that will not parse", () => {
+      setFunction(0, "wobble(x)");
+      expect(cells(0)?.[1]).toBe("error");
+    });
+  });
+
   describe("theme", () => {
     it("stamps a theme on the document", () => {
       expect(["light", "dark"]).toContain(document.documentElement.dataset["theme"]);

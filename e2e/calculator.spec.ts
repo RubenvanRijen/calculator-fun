@@ -502,6 +502,46 @@ test.describe("graph", () => {
     await expect(page.locator("[data-graph-error]")).toContainText("Y2:");
   });
 
+  test("tabulates the same functions as the graph", async ({ page }) => {
+    await page.locator('[data-graph-input="1"]').fill("2*x");
+    await page.locator('[data-tab="table"]').click();
+
+    const headers = page.locator("[data-table-head] th");
+    await expect(headers).toHaveText(["x", "Y1", "Y2"]);
+
+    // Y1 is x^2-2 and Y2 is 2x, from 0 in steps of 1.
+    const secondRow = page.locator("[data-table-body] tr").nth(1);
+    await expect(secondRow.locator("th, td")).toHaveText(["1", "-1", "2"]);
+  });
+
+  test("pages the table and follows the step", async ({ page }) => {
+    await page.locator('[data-tab="table"]').click();
+    await page.locator("[data-table-step]").fill("0.5");
+
+    const firstCell = page.locator("[data-table-body] tr").first().locator("th");
+    await expect(firstCell).toHaveText("0");
+
+    await page.locator('[data-table-page="1"]').click();
+    await expect(firstCell).toHaveText("10");
+  });
+
+  test("the table header stays put and stays readable while rows scroll", async ({ page }) => {
+    await page.locator('[data-tab="table"]').click();
+    const header = page.locator("[data-table-head] th").first();
+
+    const before = await header.boundingBox();
+    await page.locator(".table-wrap").evaluate((box) => {
+      box.scrollTop = 200;
+    });
+    const after = await header.boundingBox();
+    expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(1);
+
+    // Rows scroll underneath a sticky header, so a see-through one shows them
+    // straight through the labels. An opaque colour computes as rgb(), not rgba().
+    const background = await header.evaluate((cell) => getComputedStyle(cell).backgroundColor);
+    expect(background).not.toContain("rgba");
+  });
+
   test("typing in the graph input does not drive the keypad", async ({ page }) => {
     await page.locator('[data-graph-input="0"]').fill("x+5");
     await expect(expression(page)).toHaveText("");

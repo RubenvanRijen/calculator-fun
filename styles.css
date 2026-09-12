@@ -21,6 +21,7 @@
     --error: #ff7b7b;
     --page-text: rgba(0, 0, 0, .75);
     --chip: rgba(255, 255, 255, .18);
+    --table-head: #40161b;
 }
 
 :root[data-theme="dark"] {
@@ -44,6 +45,7 @@
     --error: #ff9c9c;
     --page-text: rgba(242, 233, 255, .8);
     --chip: rgba(255, 255, 255, .12);
+    --table-head: #14041d;
 }
 
 /* A class that sets `display` would otherwise beat the [hidden] attribute,
@@ -521,6 +523,54 @@ body {
 .plot-marker[data-series="2"] { fill: var(--plot-line-3); }
 .plot-marker[data-series="3"] { fill: var(--plot-line-4); }
 
+/* The table scrolls inside this box in both directions. It has to be the
+   scrolling ancestor, or the sticky header below has nothing to stick to and
+   simply scrolls away with the page. */
+.table-wrap {
+    overflow: auto;
+    max-height: 320px;
+    margin-top: 8px;
+}
+
+.value-table {
+    border-collapse: collapse;
+    font-size: .82rem;
+    font-variant-numeric: tabular-nums;
+    width: 100%;
+}
+
+.value-table th,
+.value-table td {
+    padding: 3px 8px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Opaque on purpose. The panel colour is translucent, and rows scroll
+   underneath a sticky header -- through it, if it lets them. */
+.value-table thead th {
+    background: var(--table-head);
+    border-bottom: 1px solid var(--chip);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+}
+
+/* The x column anchors every row, so it reads as a heading rather than data. */
+.value-table tbody th {
+    color: var(--muted);
+    font-weight: 500;
+}
+
+/* Banding, so the eye keeps its place across a wide row. */
+.value-table tbody tr:nth-child(even) {
+    background: var(--chip);
+}
+
+.cell-error {
+    color: var(--error);
+}
+
 .series-list {
     display: flex;
     flex-direction: column;
@@ -530,16 +580,19 @@ body {
 /* The colour swatch doubles as the label, so a curve can be matched to its
    field without a separate legend. */
 .series-label {
-    width: 2.2em;
-    flex: none;
     color: var(--plot-line);
 }
+
 
 .series-label[data-series-label="1"] { color: var(--plot-line-2); }
 .series-label[data-series-label="2"] { color: var(--plot-line-3); }
 .series-label[data-series-label="3"] { color: var(--plot-line-4); }
 
+/* Sizing belongs to the f(x) fields alone. On a table header, a width of
+   2.2em feeds the column algorithm and pins the Y columns narrow. */
 .field-inline .series-label {
+    width: 2.2em;
+    flex: none;
     text-transform: none;
     font-size: .85rem;
 }

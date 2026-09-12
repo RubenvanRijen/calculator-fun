@@ -21,6 +21,7 @@ ts/
   memory-register.ts  the M keys
   graph.ts            samples functions across a range
   analysis.ts         roots, intersections and turning points
+  function-series.ts  the four Y expressions, shared by the graph and table
   storage.ts          localStorage, guarded
   theme.ts            light/dark
   index.ts            composition root: builds the parts and wires them
@@ -28,8 +29,9 @@ ts/
     keypad.ts         the action registry, the 2nd layer, the keyboard
     display.ts        the expression and result lines
     history-panel.ts  |
-    register-panel.ts |  the three side-panel tabs
+    register-panel.ts |  the four side-panel tabs
     graph-panel.ts    |
+    table-panel.ts    |
   *.test.ts           unit tests
   types/              one type alias per file
   interfaces/         one interface per file
@@ -131,6 +133,17 @@ Searches run over the window, so zooming in on a region is how you pick which
 root or turning point you want. Zooming keeps the marker where it is, unless
 the new window no longer contains it — then the trace is dropped rather than
 left describing a point off the edge.
+
+**Function table.** The Table tab is the same four functions read off as
+numbers: a column per function that has something in it, a row per step of `x`,
+with a configurable start and `Δx`. The `▲` `▼` chips move a page at a time
+rather than the table growing without end, so a `Δx` of `0.001` does not try to
+render a million rows. A value the function has no answer for shows as `—`
+rather than `NaN`, and one that will not parse says `error` in its own column
+instead of blanking the table.
+
+The graph and the table are two views of one set of functions, so typing into
+`Y2` on the ƒ(x) tab reaches both.
 
 **Repeat equals.** `5 + 3 =` gives 8; press `=` again for 11, and again for 14.
 
@@ -253,7 +266,7 @@ the operands are left alone so `DEL` can fix the entry.
 the button wiring opt into jsdom per file.
 
 ```bash
-npm test             # 799 unit tests
+npm test             # 828 unit tests
 npm run test:watch
 npm run coverage     # with thresholds
 npm run test:e2e     # Playwright, real browser, desktop + mobile

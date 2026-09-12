@@ -2,6 +2,7 @@ import { tokenize, toRpn, evaluateRpn } from "@/expression.ts";
 import type { PlotPoint } from "@/interfaces/plot-point.ts";
 import type { PlotSegment } from "@/types/plot-segment.ts";
 import type { PlotResult } from "@/interfaces/plot-result.ts";
+import type { Curve } from "@/types/curve.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { MultiPlotResult } from "@/interfaces/multi-plot-result.ts";
 
@@ -116,6 +117,29 @@ export function plot(
     yMax: yMax + padding,
     error: null,
   };
+}
+
+/**
+ * Turn an expression into a plain function of x, or null if it will not parse.
+ *
+ * Parsing once and evaluating many times is the point: a table of fifty rows
+ * across four functions would otherwise re-tokenize two hundred times. The
+ * context is read per call, so a stored value changed between calls is seen.
+ *
+ * Always radians, as everywhere else a curve is drawn: the keypad's angle mode
+ * belongs to what is typed on the keypad.
+ */
+export function compileCurve(
+  expression: string,
+  contextOf: () => EvalContext
+): Curve | null {
+  if (expression.trim() === "") return null;
+  try {
+    const rpn = toRpn(tokenize(expression));
+    return (x) => evaluateRpn(rpn, { ...contextOf(), angleMode: "rad", x });
+  } catch {
+    return null;
+  }
 }
 
 /**

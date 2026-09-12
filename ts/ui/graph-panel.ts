@@ -1,6 +1,8 @@
-import { plotAll } from "@/graph.ts";
+import { compileCurve, plotAll } from "@/graph.ts";
 import { findExtremum, findIntersection, findRoot } from "@/analysis.ts";
-import { toRpn, tokenize, evaluateRpn } from "@/expression.ts";
+import { SERIES_COUNT } from "@/function-series.ts";
+import { readNumber } from "@/ui/read-number.ts";
+import type { FunctionSeries } from "@/function-series.ts";
 import type { MultiPlotResult } from "@/interfaces/multi-plot-result.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { Curve } from "@/types/curve.ts";
@@ -20,17 +22,6 @@ function trim(value: number): string {
 }
 
 /**
- * An emptied <input type="number"> reads as "", not null, so `??` would never
- * reach the fallback and Number("") would silently become 0.
- */
-function readNumber(input: HTMLInputElement | null, fallback: number): number {
-  const raw = input?.value.trim();
-  if (raw === undefined || raw === "") return fallback;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : fallback;
-}
-
-/**
  * The ƒ(x) tab: up to four functions, a range that can be zoomed, a trace that
  * walks along a curve, and searches for roots, turning points and crossings.
  */
@@ -38,13 +29,15 @@ export function setupGraphPanel(
   root: Document | HTMLElement,
   doc: Document,
   signal: AbortSignal,
+  /** The functions being plotted, shared with the table. */
+  series: FunctionSeries,
   /** Supplies stored values, so "A*x" can be plotted. */
   contextOf: () => EvalContext
 ): { render: () => void } {
   const query = <T extends HTMLElement>(selector: string): T | null =>
     root.querySelector<T>(selector);
 
-  const inputs = [0, 1, 2, 3].map((index) =>
+  const inputs = Array.from({ length: SERIES_COUNT }, (_, index) =>
     query<HTMLInputElement>(`[data-graph-input="${index}"]`)
   );
   const minInput = query<HTMLInputElement>("[data-graph-min]");
@@ -52,6 +45,7 @@ export function setupGraphPanel(
   const svg = root.querySelector<SVGSVGElement>("[data-graph-svg]");
   const errorElement = query("[data-graph-error]");
   const readout = query("[data-graph-readout]");
+  const panel = query('[data-panel="graph"]');
 
   let plotted: MultiPlotResult | null = null;
   let range = { xMin: -10, xMax: 10 };
@@ -63,7 +57,7 @@ export function setupGraphPanel(
    */
   let traced: { series: number; x: number; known: number | undefined } | null = null;
 
-  const expressions = (): string[] => inputs.map((input) => input?.value.trim() ?? "");
+  const expressions = (): readonly string[] => series.all();
 
   /** The indexes of the series that actually have something drawn. */
   const drawn = (): number[] =>
@@ -72,16 +66,8 @@ export function setupGraphPanel(
       .filter((index) => index !== -1);
 
   /** A plain function of x for one series, for the numeric searches. */
-  function curveFor(index: number): Curve | null {
-    const expression = expressions()[index] ?? "";
-    if (expression === "") return null;
-    try {
-      const rpn = toRpn(tokenize(expression));
-      return (x) => evaluateRpn(rpn, { ...contextOf(), angleMode: "rad", x });
-    } catch {
-      return null;
-    }
-  }
+  const curveFor = (index: number): Curve | null =>
+    compileCurve(series.at(index), contextOf);
 
   function line(x1: number, y1: number, x2: number, y2: number): SVGElement {
     const element = doc.createElementNS(SVG_NS, "line");
@@ -104,6 +90,9 @@ export function setupGraphPanel(
 
   function render(): void {
     if (!svg) return;
+    // Tabs unhide the panel before asking it to render, so this only skips the
+    // redraws that would land on a panel nobody is looking at.
+    if (panel?.hidden === true) return;
 
     range = { xMin: readNumber(minInput, -10), xMax: readNumber(maxInput, 10) };
     plotted = plotAll(expressions(), range.xMin, range.xMax, undefined, contextOf());
@@ -283,12 +272,16 @@ export function setupGraphPanel(
   }
 
   // --- wiring ---------------------------------------------------------------
-  for (const input of inputs) {
+  inputs.forEach((input, index) => {
     input?.addEventListener("input", () => {
-      traced = null;
-      render();
+      series.set(index, input.value);
     }, { signal });
-  }
+  });
+
+  series.onChange(() => {
+    traced = null;
+    render();
+  }, signal);
   for (const input of [minInput, maxInput]) {
     input?.addEventListener("input", render, { signal });
   }
