@@ -1,29 +1,29 @@
 import { compileCurve, plotAll } from "@/graph.ts";
-import { derivative, findExtremum, findIntersection, findRoot, integrate } from "@/analysis.ts";
 import { SERIES_COUNT } from "@/function-series.ts";
 import { readNumber } from "@/ui/read-number.ts";
+import {
+  PLOT_HEIGHT,
+  PLOT_WIDTH,
+  areaD,
+  areaShape,
+  axisLine,
+  curvePath,
+  dot,
+  traceMarker,
+  segmentD,
+} from "@/ui/graph-shapes.ts";
+import { boundText, windowAround } from "@/ui/graph-window.ts";
+import { traceText } from "@/ui/graph-readout.ts";
+import { search } from "@/ui/graph-search.ts";
+import { queryIn } from "@/ui/query.ts";
 import type { FunctionSeries } from "@/function-series.ts";
 import type { MultiPlotResult } from "@/interfaces/multi-plot-result.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { Curve } from "@/types/curve.ts";
 import type { PlotPoint } from "@/interfaces/plot-point.ts";
-import type { ExtremumKind } from "@/types/extremum-kind.ts";
-
-/** The SVG user-space the plot is drawn in. */
-const PLOT_WIDTH = 280;
-const PLOT_HEIGHT = 200;
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-/** How many points the shaded region of an integral is drawn from. */
-const REGION_STEPS = 240;
 
 /** How far one press of the trace arrows moves, as a share of the range. */
 const TRACE_STEP = 1 / 60;
-
-/** Short, readable numbers for the readout. */
-function trim(value: number): string {
-  return parseFloat(value.toPrecision(4)).toString();
-}
 
 /**
  * The ƒ(x) tab: up to four functions, a range that can be zoomed, a trace that
@@ -37,21 +37,35 @@ export function setupGraphPanel(
   series: FunctionSeries,
   /** Supplies stored values, so "A*x" can be plotted. */
   contextOf: () => EvalContext,
-  /** Loose points drawn over the curves, for a scatter from the Stats tab. */
+  /**
+   * The points a scatter would draw, for the Stats tab's data.
+   *
+   * Read each time rather than copied, so editing a cell moves its point and
+   * clearing the lists takes the scatter with it -- a snapshot would go on
+   * showing data that had been deleted.
+   */
   scatterOf: () => readonly PlotPoint[] = () => []
-): { render: () => void; forgetArea: () => void } {
-  const query = <T extends HTMLElement>(selector: string): T | null =>
-    root.querySelector<T>(selector);
+): {
+  render: () => void;
+  forgetArea: () => void;
+  frameTo: (points: readonly PlotPoint[]) => void;
+  showScatter: (on: boolean) => void;
+} {
+  const query = queryIn(root);
 
   const inputs = Array.from({ length: SERIES_COUNT }, (_, index) =>
     query<HTMLInputElement>(`[data-graph-input="${index}"]`)
   );
   const minInput = query<HTMLInputElement>("[data-graph-min]");
   const maxInput = query<HTMLInputElement>("[data-graph-max]");
-  const svg = root.querySelector<SVGSVGElement>("[data-graph-svg]");
+  const svg = query<SVGSVGElement>("[data-graph-svg]");
   const errorElement = query("[data-graph-error]");
   const readout = query("[data-graph-readout]");
   const panel = query('[data-panel="graph"]');
+  const scatterChip = query("[data-graph-scatter]");
+
+  /** Whether the chart is showing the statistics data as well as its curves. */
+  let plottingData = false;
 
   let plotted: MultiPlotResult | null = null;
   let range = { xMin: -10, xMax: 10 };
@@ -82,16 +96,6 @@ export function setupGraphPanel(
   /** A plain function of x for one series, for the numeric searches. */
   const curveFor = (index: number): Curve | null =>
     compileCurve(series.at(index), contextOf);
-
-  function line(x1: number, y1: number, x2: number, y2: number): SVGElement {
-    const element = doc.createElementNS(SVG_NS, "line");
-    element.setAttribute("x1", String(x1));
-    element.setAttribute("y1", String(y1));
-    element.setAttribute("x2", String(x2));
-    element.setAttribute("y2", String(y2));
-    element.setAttribute("class", "plot-axis");
-    return element;
-  }
 
   const toScreenX = (x: number): number =>
     ((x - range.xMin) / (range.xMax - range.xMin)) * PLOT_WIDTH;
@@ -142,7 +146,7 @@ export function setupGraphPanel(
     // Only the points that will actually be drawn: one far-off row would
     // otherwise stretch the window for points that never appear, flattening
     // the visible ones into a line along the bottom.
-    const scatter = scatterOf().filter(
+    const scatter = (plottingData ? scatterOf() : []).filter(
       (point) => point.x >= range.xMin && point.x <= range.xMax
     );
     if (scatter.length > 0) {
@@ -150,11 +154,8 @@ export function setupGraphPanel(
       // points, and a curve that does not fit is clipped. Widening to hold
       // both instead would squash a scatter of 2 to 5 into a band at the
       // bottom the moment an unrelated x^2 was still in Y1.
-      const ys = scatter.map((point) => point.y);
-      const low = Math.min(...ys);
-      const high = Math.max(...ys);
-      const margin = Math.max((high - low) * 0.1, 1);
-      view = { yMin: low - margin, yMax: high + margin };
+      const fitted = windowAround(scatter.map((point) => point.y));
+      view = { yMin: fitted.min, yMax: fitted.max };
     } else {
       view = { yMin: plotted.yMin, yMax: plotted.yMax };
     }
@@ -162,84 +163,32 @@ export function setupGraphPanel(
     svg.replaceChildren();
 
     if (range.xMin < 0 && range.xMax > 0) {
-      svg.append(line(toScreenX(0), 0, toScreenX(0), PLOT_HEIGHT));
+      svg.append(axisLine(doc, toScreenX(0), 0, toScreenX(0), PLOT_HEIGHT));
     }
     if (view.yMin < 0 && view.yMax > 0) {
-      svg.append(line(0, toScreenY(0), PLOT_WIDTH, toScreenY(0)));
+      svg.append(axisLine(doc, 0, toScreenY(0), PLOT_WIDTH, toScreenY(0)));
     }
 
     if (shaded !== null) {
-      const curve = curveFor(shaded.series);
-      const baseline = Math.min(Math.max(toScreenY(0), 0), PLOT_HEIGHT);
-      const clamp = (value: number): number =>
-        Math.min(Math.max(toScreenY(value), 0), PLOT_HEIGHT);
-
-      // Sampled from the curve rather than taken from the drawn segments: the
-      // plot drops whatever runs past its magnitude cutoff, and a region built
-      // from what is left would leave out the very spans that decided the
-      // total. Clamped to the box so a spike shades to the edge instead of
-      // escaping it.
-      const points: string[] = [];
-      for (let index = 0; index <= REGION_STEPS; index += 1) {
-        const x = range.xMin + ((range.xMax - range.xMin) * index) / REGION_STEPS;
-        let y: number;
-        try {
-          y = curve === null ? Number.NaN : curve(x);
-        } catch {
-          y = Number.NaN;
-        }
-        if (!Number.isFinite(y)) continue;
-        points.push(`L${toScreenX(x).toFixed(2)} ${clamp(y).toFixed(2)}`);
-      }
-
-      if (points.length > 1) {
-        const region = doc.createElementNS(SVG_NS, "path");
-        region.setAttribute(
-          "d",
-          `M0 ${baseline.toFixed(2)} ${points.join(" ")} ` +
-          `L${PLOT_WIDTH.toFixed(2)} ${baseline.toFixed(2)} Z`
-        );
-        region.setAttribute("class", "plot-area");
-        region.setAttribute("data-graph-area", String(shaded.series));
-        svg.append(region);
-      }
+      const d = areaD(
+        curveFor(shaded.series), range.xMin, range.xMax, toScreenX, toScreenY
+      );
+      if (d !== null) svg.append(areaShape(doc, d, shaded.series));
     }
 
     plotted.series.forEach((result, index) => {
       for (const segment of result.segments) {
-        const path = doc.createElementNS(SVG_NS, "path");
-        path.setAttribute(
-          "d",
-          segment
-            .map((point, at) =>
-              `${at === 0 ? "M" : "L"}${toScreenX(point.x).toFixed(2)} ${toScreenY(point.y).toFixed(2)}`
-            )
-            .join(" ")
-        );
-        path.setAttribute("class", "plot-line");
-        path.setAttribute("data-series", String(index));
-        svg.append(path);
+        svg.append(curvePath(doc, segmentD(segment, toScreenX, toScreenY), index));
       }
     });
 
     // After the curves, so the fitted line does not paint over the data it
     // was fitted to.
     for (const point of scatter) {
-      const dot = doc.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("r", "2.5");
-      dot.setAttribute("cx", toScreenX(point.x).toFixed(2));
-      dot.setAttribute("cy", toScreenY(point.y).toFixed(2));
-      dot.setAttribute("class", "plot-point");
-      dot.setAttribute("data-graph-point", "");
-      svg.append(dot);
+      svg.append(dot(doc, toScreenX(point.x), toScreenY(point.y)));
     }
 
-    const marker = doc.createElementNS(SVG_NS, "circle");
-    marker.setAttribute("r", "3.5");
-    marker.setAttribute("class", "plot-marker");
-    marker.setAttribute("data-graph-marker", "");
-    marker.setAttribute("visibility", "hidden");
-    svg.append(marker);
+    svg.append(traceMarker(doc));
 
     // A trace already running should survive a redraw -- but only while it is
     // still on screen. Replaying one from the old window would leave the
@@ -291,7 +240,7 @@ export function setupGraphPanel(
       marker.setAttribute("data-series", String(series));
     }
     if (readout) {
-      readout.textContent = `Y${series + 1}   x = ${trim(x)}   y = ${trim(y)}`;
+      readout.textContent = traceText(series, x, y);
     }
   }
 
@@ -322,8 +271,8 @@ export function setupGraphPanel(
   function scaleRange(factor: number): void {
     const centre = (range.xMin + range.xMax) / 2;
     const half = ((range.xMax - range.xMin) / 2) * factor;
-    if (minInput) minInput.value = String(parseFloat((centre - half).toPrecision(6)));
-    if (maxInput) maxInput.value = String(parseFloat((centre + half).toPrecision(6)));
+    if (minInput) minInput.value = boundText(centre - half);
+    if (maxInput) maxInput.value = boundText(centre + half);
     render();
   }
 
@@ -345,55 +294,31 @@ export function setupGraphPanel(
       return;
     }
 
-    if (what === "slope") {
-      // Where the trace is, or the middle of the window if it is not running.
-      const x = traced?.x ?? (range.xMin + range.xMax) / 2;
-      const slope = derivative(curve, x);
-      if (readout) {
-        readout.textContent = slope === null
-          ? `No slope at x = ${trim(x)}`
-          : `Y${series + 1}   x = ${trim(x)}   dy/dx = ${trim(slope)}`;
-      }
+    const outcome = search(
+      what,
+      series,
+      curve,
+      () => {
+        const other = visible.find((index) => index !== series);
+        return other === undefined ? null : curveFor(other);
+      },
+      range.xMin,
+      range.xMax,
+      traced?.x ?? (range.xMin + range.xMax) / 2
+    );
+
+    if (outcome.kind === "trace") {
+      showTrace(series, outcome.x, outcome.y);
       return;
     }
 
-    if (what === "area") {
-      const area = integrate(curve, range.xMin, range.xMax);
-      if (area === null) {
-        shaded = null;
-        render();
-        if (readout) readout.textContent = "No area across this range";
-        return;
-      }
-      shaded = { series, xMin: range.xMin, xMax: range.xMax };
+    // The shading first and the wording last: shading means a redraw, and a
+    // redraw can clear the readout out from under the answer.
+    if (outcome.kind === "area") {
+      shaded = outcome.shade ? { series, xMin: range.xMin, xMax: range.xMax } : null;
       render();
-      if (readout) {
-        readout.textContent =
-          `Y${series + 1}   \u222b from ${trim(range.xMin)} to ${trim(range.xMax)} = ${trim(area)}`;
-      }
-      return;
     }
-
-    let found = null;
-    if (what === "root") {
-      found = findRoot(curve, range.xMin, range.xMax);
-    } else if (what === "min" || what === "max") {
-      found = findExtremum(curve, range.xMin, range.xMax, what as ExtremumKind);
-    } else if (what === "intersect") {
-      const other = visible.find((index) => index !== series);
-      const otherCurve = other === undefined ? null : curveFor(other);
-      if (otherCurve === null) {
-        if (readout) readout.textContent = "Intersect needs two curves";
-        return;
-      }
-      found = findIntersection(curve, otherCurve, range.xMin, range.xMax);
-    }
-
-    if (found === null) {
-      if (readout) readout.textContent = `No ${what} in this range`;
-      return;
-    }
-    showTrace(series, found.x, found.y);
+    if (readout) readout.textContent = outcome.text;
   }
 
   // --- wiring ---------------------------------------------------------------
@@ -485,5 +410,38 @@ export function setupGraphPanel(
     if (readout) readout.textContent = "";
   };
 
-  return { render, forgetArea };
+  /**
+   * Put the window around `points`, for a caller that has data to show but no
+   * business knowing how this panel spells a range.
+   *
+   * Writes the fields and stops. Nothing is redrawn, because the caller is
+   * part-way through setting a plot up -- an expression still to go in, a
+   * scatter still to switch on -- and a redraw here would draw half of it.
+   */
+  const frameTo = (points: readonly PlotPoint[]): void => {
+    const fitted = windowAround(points.map((point) => point.x));
+    if (minInput) minInput.value = boundText(fitted.min);
+    if (maxInput) maxInput.value = boundText(fitted.max);
+  };
+
+  /**
+   * Turn the scatter on or off.
+   *
+   * It needs an off: while data is on the chart the window frames the data,
+   * so an ordinary curve is drawn against the data's scale and can end up far
+   * off the top of the box. Without this the only ways back would be deleting
+   * the data or reloading the page.
+   */
+  const showScatter = (on: boolean): void => {
+    plottingData = on;
+    scatterChip?.classList.toggle("is-active", on);
+    scatterChip?.setAttribute("aria-pressed", String(on));
+    render();
+  };
+
+  scatterChip?.addEventListener("click", () => {
+    showScatter(!plottingData);
+  }, { signal });
+
+  return { render, forgetArea, frameTo, showScatter };
 }

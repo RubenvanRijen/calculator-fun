@@ -1,13 +1,16 @@
 import { summarise, regress } from "@/stats.ts";
 import { LIST_NAMES } from "@/stat-lists.ts";
+import { queryIn } from "@/ui/query.ts";
+import { significant } from "@/format.ts";
 import type { StatLists } from "@/stat-lists.ts";
 import type { OneVarStats } from "@/interfaces/one-var-stats.ts";
+import type { Regression } from "@/interfaces/regression.ts";
 
 /** Enough digits to be useful, few enough to read down a column. */
 function figure(value: number | null): string {
   if (value === null) return "—";
   if (!Number.isFinite(value)) return "—";
-  return parseFloat(value.toPrecision(8)).toString();
+  return String(significant(value, 8));
 }
 
 /** The rows of the summary, in the order the hardware lists them. */
@@ -41,11 +44,10 @@ export function setupStatsPanel(
   /** Hands the scatter and its fit to the graph, and shows it. */
   onPlot: (fit: string) => void
 ): { render: () => void } {
-  const query = <T extends HTMLElement>(selector: string): T | null =>
-    root.querySelector<T>(selector);
+  const query = queryIn(root);
 
-  const body = root.querySelector<HTMLTableSectionElement>("[data-stats-body]");
-  const summary = root.querySelector<HTMLTableSectionElement>("[data-stats-summary]");
+  const body = query<HTMLTableSectionElement>("[data-stats-body]");
+  const summary = query<HTMLTableSectionElement>("[data-stats-summary]");
   const fitLine = query("[data-stats-fit]");
   const panel = query('[data-panel="stats"]');
 
@@ -110,21 +112,41 @@ export function setupStatsPanel(
   }
 
   /**
-   * The line, or why there isn't one.
+   * Why the rows do not make a line.
    *
    * The two reasons are different things to fix: not enough complete rows, or
    * enough rows that all sit above the same x. Telling someone with five rows
-   * that a line needs two rows would send them looking for the wrong problem.
+   * that a line needs two rows would send them looking for the wrong problem
+   * -- which is what pressing plot used to do, however carefully the line
+   * above the editor had just said otherwise.
    */
-  function fitText(): string {
-    const points = lists.pairs();
-    const fit = regress(points.map((point) => point.x), points.map((point) => point.y));
+  function whyNoFit(pairs: number): string {
+    return pairs < 2
+      ? "A line needs two rows with both values."
+      : "Every x is the same, so there is no line to fit.";
+  }
 
-    if (fit === null) {
-      return points.length < 2
-        ? "A line needs two rows with both values."
-        : "Every x is the same, so there is no line to fit.";
-    }
+  /**
+   * The regression the panel is currently describing, and how many rows fed
+   * it.
+   *
+   * The count comes back with it because the two are asked together every
+   * time: without a fit, the number of rows is what says which of the two
+   * reasons to give.
+   */
+  function currentFit(): { fit: Regression | null; pairs: number } {
+    const points = lists.pairs();
+    return {
+      fit: regress(points.map((point) => point.x), points.map((point) => point.y)),
+      pairs: points.length,
+    };
+  }
+
+  /** The line, or why there isn't one. */
+  function fitText(): string {
+    const { fit, pairs } = currentFit();
+
+    if (fit === null) return whyNoFit(pairs);
 
     const sign = fit.intercept < 0 ? "−" : "+";
     const line = `y = ${figure(fit.slope)}x ${sign} ${figure(Math.abs(fit.intercept))}`;
@@ -138,11 +160,14 @@ export function setupStatsPanel(
     renderSummary();
   }
 
-  /** The fit as something the grapher can parse. */
-  function fitExpression(): string | null {
-    const points = lists.pairs();
-    const fit = regress(points.map((p) => p.x), points.map((p) => p.y));
-    if (fit === null) return null;
+  /**
+   * The fit as something the grapher can parse.
+   *
+   * Handed the fit rather than working one out: the caller has already had to
+   * compute it to know whether there is a line at all, and this used to go
+   * and compute the same one again.
+   */
+  function expressionFor(fit: Regression): string {
     const intercept = fit.intercept < 0
       ? `-${Math.abs(fit.intercept)}`
       : `+${fit.intercept}`;
@@ -189,12 +214,12 @@ export function setupStatsPanel(
       renderSummary();
     }
     else if (action === "plot") {
-      const fit = fitExpression();
+      const { fit, pairs } = currentFit();
       if (fit === null) {
-        if (fitLine) fitLine.textContent = "Nothing to plot: a line needs two rows with both values.";
+        if (fitLine) fitLine.textContent = `Nothing to plot. ${whyNoFit(pairs)}`;
         return;
       }
-      onPlot(fit);
+      onPlot(expressionFor(fit));
     }
   }, { signal });
 

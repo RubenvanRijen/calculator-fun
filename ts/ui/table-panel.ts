@@ -1,5 +1,7 @@
 import { compileCurve } from "@/graph.ts";
 import { readNumber } from "@/ui/read-number.ts";
+import { queryIn } from "@/ui/query.ts";
+import { significant } from "@/format.ts";
 import type { FunctionSeries } from "@/function-series.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 
@@ -32,7 +34,7 @@ function xDigits(start: number, step: number): number {
 function cell(value: number, digits = 8): string {
   if (Number.isNaN(value)) return "—";
   if (!Number.isFinite(value)) return value > 0 ? "∞" : "-∞";
-  return parseFloat(value.toPrecision(digits)).toString();
+  return String(significant(value, digits));
 }
 
 /**
@@ -50,13 +52,12 @@ export function setupTablePanel(
   /** Supplies stored values, so "A*x" tabulates like it plots. */
   contextOf: () => EvalContext
 ): { render: () => void } {
-  const query = <T extends HTMLElement>(selector: string): T | null =>
-    root.querySelector<T>(selector);
+  const query = queryIn(root);
 
   const startInput = query<HTMLInputElement>("[data-table-start]");
   const stepInput = query<HTMLInputElement>("[data-table-step]");
-  const head = root.querySelector<HTMLTableRowElement>("[data-table-head]");
-  const body = root.querySelector<HTMLTableSectionElement>("[data-table-body]");
+  const head = query<HTMLTableRowElement>("[data-table-head]");
+  const body = query<HTMLTableSectionElement>("[data-table-body]");
   const empty = query("[data-table-empty]");
   const panel = query('[data-panel="table"]');
 
@@ -99,7 +100,12 @@ export function setupTablePanel(
     // A step of zero prints one row forever. Anything else the user typed is
     // kept, however small: a tiny step is how a limit gets inspected, and
     // replacing it with 1 would answer a different question in silence.
-    const step = Math.abs(rawStep) < MIN_STEP ? MIN_STEP : rawStep;
+    //
+    // The floor keeps the sign it was given. Taking the magnitude and putting
+    // back a positive one turned a step of -1e-12 into +1e-9, so a table asked
+    // to count down counted up instead.
+    const floor = rawStep < 0 ? -MIN_STEP : MIN_STEP;
+    const step = Math.abs(rawStep) < MIN_STEP ? floor : rawStep;
     const digits = xDigits(start, step);
 
     for (let row = 0; row < ROW_COUNT; row += 1) {

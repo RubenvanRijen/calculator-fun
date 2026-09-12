@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { setupCalculator } from "@/index.ts";
 import { MAX_SIZE } from "@/matrices.ts";
+import { MATRIX_OPS } from "@/ui/matrix-operations.ts";
 import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
 
 // Read the real page rather than a hand-copied fixture, so these tests cannot
@@ -1367,6 +1368,31 @@ describe("setupCalculator", () => {
       expect(fit()).toContain("Every x is the same");
     });
 
+    it("says which reason it cannot plot, not just the first one", () => {
+      // Three complete rows all above the same x. The line above the editor
+      // says so correctly; pressing plot used to replace that with "needs two
+      // rows", which is the wrong problem and is exactly what the comment on
+      // whyNoFit was written to prevent.
+      [0, 1, 2].forEach((row) => {
+        type("L1", row, "3");
+        type("L2", row, String(row + 1));
+      });
+      expect(fit()).toContain("Every x is the same");
+
+      act("plot");
+      expect(fit()).toContain("Nothing to plot");
+      expect(fit()).toContain("Every x is the same");
+      expect(fit()).not.toContain("needs two rows");
+    });
+
+    it("still says so when there are simply too few rows to plot", () => {
+      type("L1", 0, "1");
+      type("L2", 0, "2");
+      act("plot");
+      expect(fit()).toContain("Nothing to plot");
+      expect(fit()).toContain("needs two rows");
+    });
+
     it("refuses to plot what has no line", () => {
       act("plot");
       expect(fit()).toContain("Nothing to plot");
@@ -1414,6 +1440,55 @@ describe("setupCalculator", () => {
     it("has a tab and a panel", () => {
       expect(root.querySelector('[data-panel="matrix"]')).not.toBeNull();
       expect(root.querySelector('[data-tab="matrix"]')).not.toBeNull();
+    });
+
+    it("offers exactly the operations the panel knows", () => {
+      // The same guard the keypad has had all along. Without it a typo in the
+      // markup was a button that looked like it worked: the name matched no
+      // branch, so the previous answer stayed on screen and the error was
+      // cleared.
+      const offered = [...root.querySelectorAll<HTMLElement>("[data-matrix-do]")]
+        .map((button) => button.dataset["matrixDo"]);
+
+      // Compared as sets, not by length and membership: two buttons carrying
+      // the same name would pass that weaker check while the operation they
+      // displaced became unreachable -- a button quietly doing the wrong sum,
+      // which is worse than a button doing nothing.
+      expect([...offered].sort()).toEqual([...MATRIX_OPS].sort());
+    });
+
+    it("ignores an operation it does not know, and keeps working after", () => {
+      fill("A", [[1, 2], [3, 4]]);
+      run("determinant-A");
+      expect(scalar()).toBe("det A = -2");
+
+      const chip = root.querySelector<HTMLElement>('[data-matrix-do="determinant-A"]');
+      chip?.setAttribute("data-matrix-do", "determinent-A");
+      chip?.click();
+
+      // The click does nothing, so what is on screen is still the last real
+      // answer -- and, the part that matters, the panel still knows which
+      // operation that was. Editing a cell updates it rather than freezing.
+      const input = cell("A", 0, 0);
+      if (input) input.value = "5";
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(scalar()).toBe("det A = 14");
+      expect(error()).toBe("");
+    });
+
+    it("is not fooled by a name every object has", () => {
+      // "toString" is `in` every object. Reached through a prototype it would
+      // be called as an operation, and its "[object Object]" has no kind, so
+      // the panel rendered "undefined = —" and went on rendering it.
+      fill("A", [[1, 2], [3, 4]]);
+      run("determinant-A");
+
+      const chip = root.querySelector<HTMLElement>('[data-matrix-do="determinant-A"]');
+      chip?.setAttribute("data-matrix-do", "toString");
+      chip?.click();
+
+      expect(scalar()).toBe("det A = -2");
+      expect(scalar()).not.toContain("undefined");
     });
 
     it("starts with two 2 by 2 grids of zeros", () => {
@@ -1692,6 +1767,18 @@ describe("setupCalculator", () => {
       expect(cells(0)?.[0]).toBe("100000");
       expect(cells(1)?.[0]).toBe("100000.001");
       expect(cells(2)?.[0]).toBe("100000.002");
+    });
+
+    it("counts down when a tiny step is negative", () => {
+      const step = root.querySelector<HTMLInputElement>("[data-table-step]");
+      // Below the floor and negative. Taking the magnitude and putting back a
+      // positive floor turned this into +1e-9, so a table asked to count down
+      // counted up.
+      if (step) step.value = "-1e-12";
+      step?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      expect(cells(1)?.[0]).toBe("-1e-9");
+      expect(cells(2)?.[0]).toBe("-2e-9");
     });
 
     it("keeps a tiny step tiny instead of jumping it to 1", () => {

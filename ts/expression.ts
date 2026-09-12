@@ -67,7 +67,7 @@ const FUNCTIONS: Record<FunctionName, (value: number, angleMode: AngleMode) => n
   exp: (value) => Math.exp(value),
 };
 
-export const FUNCTION_NAMES = Object.keys(FUNCTIONS) as FunctionName[];
+const FUNCTION_NAMES = Object.keys(FUNCTIONS) as FunctionName[];
 
 /** The spellings the tokenizer accepts, and which constant each names. */
 const CONSTANT_NAMES: Readonly<Record<string, ConstantName>> = {
@@ -77,14 +77,21 @@ const CONSTANT_NAMES: Readonly<Record<string, ConstantName>> = {
 };
 
 /** What each constant is worth in floating point. */
-export const CONSTANT_VALUES: Readonly<Record<ConstantName, number>> = {
+const CONSTANT_VALUES: Readonly<Record<ConstantName, number>> = {
   pi: Math.PI,
   e: Math.E,
 };
 
-const OPERATIONS = [
-  "+", "-", "*", "÷", "^", "nCr", "nPr",
-] as const satisfies readonly Operation[];
+/**
+ * Every operation, taken from the precedence table rather than listed again.
+ *
+ * PRECEDENCE is a Record over the union, so the compiler already insists it
+ * is complete. Writing the names out a second time did not get that: the
+ * `satisfies` on the old list checked that each name was an operation, not
+ * that every operation was named, so one left out here would have been
+ * rejected by isOperation and its key would have done nothing at all.
+ */
+const OPERATIONS: readonly Operation[] = Object.keys(PRECEDENCE) as Operation[];
 
 /** The operator names the tokenizer reads as words rather than symbols. */
 const WORD_OPERATORS: Readonly<Record<string, Operation>> = {
@@ -112,7 +119,24 @@ export function isOperation(value: string): value is Operation {
 /** One piece of a letter run: a known name, or a single-letter register. */
 type RunPiece = { readonly known: string } | { readonly register: RegisterName };
 
-const REGISTER_NAMES: readonly RegisterName[] = ["A", "B", "C", "D"];
+const REGISTERS: Readonly<Record<RegisterName, true>> = {
+  A: true,
+  B: true,
+  C: true,
+  D: true,
+};
+
+/**
+ * Every letter a value can be stored under.
+ *
+ * Taken from the keys of a Record over the union, so a letter the calculator
+ * gains cannot be left out of one of the places that enumerate them -- the
+ * tokenizer, the panel that offers them, and the state that is saved. Missing
+ * it here would make the letter unreadable in an expression; missing it in
+ * storage.ts would make it work until the page was reloaded.
+ */
+export const REGISTER_NAMES: readonly RegisterName[] =
+  Object.keys(REGISTERS) as RegisterName[];
 
 function asRegister(letter: string): RegisterName | null {
   return REGISTER_NAMES.find((name) => name === letter) ?? null;

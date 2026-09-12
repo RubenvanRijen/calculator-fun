@@ -1,4 +1,5 @@
 import type { ListName } from "@/types/list-name.ts";
+import { Listeners } from "@/listeners.ts";
 import type { StatRow } from "@/interfaces/stat-row.ts";
 import type { PlotPoint } from "@/interfaces/plot-point.ts";
 
@@ -17,7 +18,7 @@ export const LIST_NAMES: readonly ListName[] = ["L1", "L2"];
  */
 export class StatLists {
   #rows: { L1: number | null; L2: number | null }[];
-  readonly #listeners: (() => void)[] = [];
+  readonly #listeners = new Listeners();
 
   constructor(rows: readonly StatRow[] = []) {
     this.#rows = rows.map((row) => ({ L1: row.L1, L2: row.L2 }));
@@ -61,34 +62,24 @@ export class StatLists {
     if (row[name] === cleaned) return;
 
     row[name] = cleaned;
-    this.#notify();
+    this.#listeners.notify();
   }
 
   /** Add an empty row at the bottom, for data that outgrew the editor. */
   addRow(): void {
     this.#rows.push({ L1: null, L2: null });
-    this.#notify();
+    this.#listeners.notify();
   }
 
   /** Empty every cell, keeping the editor the size it was. */
   clear(): void {
     if (this.#rows.every((row) => row.L1 === null && row.L2 === null)) return;
     this.#rows = this.#rows.map(() => ({ L1: null, L2: null }));
-    this.#notify();
+    this.#listeners.notify();
   }
 
   /** Run `listener` whenever the data changes, until `signal` aborts. */
   onChange(listener: () => void, signal: AbortSignal): void {
-    if (signal.aborted) return;
-    this.#listeners.push(listener);
-
-    signal.addEventListener("abort", () => {
-      const at = this.#listeners.indexOf(listener);
-      if (at !== -1) this.#listeners.splice(at, 1);
-    }, { once: true });
-  }
-
-  #notify(): void {
-    for (const listener of this.#listeners) listener();
+    this.#listeners.add(listener, signal);
   }
 }

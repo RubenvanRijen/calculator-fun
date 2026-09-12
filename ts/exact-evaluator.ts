@@ -2,6 +2,7 @@ import { TokenKind } from "@/enums/token-kind.ts";
 import * as Exact from "@/exact.ts";
 import type { Token } from "@/types/token.ts";
 import type { ExactValue } from "@/interfaces/exact-value.ts";
+import type { Operation } from "@/types/operation.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 
@@ -34,18 +35,46 @@ const SINE_TABLE: Readonly<Record<string, ExactValue | undefined>> = {
   "11/6": make(-1n, 2n),
 };
 
+/**
+ * A constant of this module, built once while the module loads.
+ *
+ * Every caller passes literals, so the throw says something about this file
+ * rather than about any input: if it ever fires it fires on import, taking
+ * the whole app down at startup where the tests will see it, rather than part
+ * way through someone's calculation.
+ */
 function make(num: bigint, den = 1n, radicand = 1n): ExactValue {
   const value = Exact.normalise({ num, den, radicand, piPower: 0 });
   if (value === null) throw new Error("unreachable: table entry is normalisable");
   return value;
 }
 
+/**
+ * What one unit of each mode is, as a fraction of a radian.
+ *
+ * The exact twin of RADIANS_PER_UNIT in expression.ts, in bigints. A Record
+ * over the union rather than a chain ending in `return Exact.ONE`, because
+ * that fallback meant a mode added to the union would have been read as
+ * radians here while the float path read it correctly -- the two lines of the
+ * display disagreeing, with the exact one wrong.
+ *
+ * Three values, not three functions returning them. They are constants and
+ * were being rebuilt on every trigonometric evaluation; sharing one instance
+ * each is safe because every field of an ExactValue is readonly, which is how
+ * SINE_TABLE above has always held its entries.
+ */
+const TURN_FRACTION: Readonly<Record<AngleMode, ExactValue>> = {
+  rad: Exact.ONE,
+  deg: make(1n, 180n),
+  grad: make(1n, 200n),
+};
+
+/** A quarter turn, for the cosine shift below. */
+const QUARTER_TURN = make(1n, 2n);
+
 /** How many radians one unit of the active mode is, as an exact value. */
 function turnFraction(mode: AngleMode): ExactValue {
-  // deg -> π/180, grad -> π/200, rad -> 1
-  if (mode === "deg") return make(1n, 180n);
-  if (mode === "grad") return make(1n, 200n);
-  return Exact.ONE;
+  return TURN_FRACTION[mode];
 }
 
 /** The argument as a multiple of π, when it is one. */
@@ -81,7 +110,7 @@ function lookupSine(k: ExactValue): ExactValue | null {
 
 /** cos x = sin(x + π/2). */
 function lookupCosine(k: ExactValue): ExactValue | null {
-  const shifted = Exact.add(k, make(1n, 2n));
+  const shifted = Exact.add(k, QUARTER_TURN);
   return shifted === null ? null : lookupSine(shifted);
 }
 
@@ -117,6 +146,30 @@ function applyFunction(
   // at almost every argument, so there is nothing exact to return.
   return null;
 }
+
+/**
+ * How each operator is worked out exactly, where it can be.
+ *
+ * A Record over the operations rather than a chain ending in a fallback: the
+ * chain ended `: Exact.power(left, right)`, so an operator added to the union
+ * and forgotten here would have been exponentiated -- silently, and only on
+ * the exact line, with the float line beside it showing the right answer.
+ *
+ * Combinations are whole numbers, so the float path is already exact and
+ * there is nothing for this evaluator to add; they say so by returning null,
+ * which is how everything else here declines as well.
+ */
+const EXACTLY: Readonly<
+  Record<Operation, (left: ExactValue, right: ExactValue) => ExactValue | null>
+> = {
+  "+": Exact.add,
+  "-": Exact.subtract,
+  "*": Exact.multiply,
+  "÷": Exact.divide,
+  "^": Exact.power,
+  nCr: () => null,
+  nPr: () => null,
+};
 
 /**
  * Evaluate postfix tokens exactly. Returns null the moment the result would
@@ -189,17 +242,7 @@ export function evaluateExactRpn(
         const left = pop();
         if (right === null || left === null) return null;
 
-        // Combinations and factorials are whole numbers, so the float path
-        // is already exact; there is nothing for this evaluator to add.
-        if (token.operator === "nCr" || token.operator === "nPr") return null;
-
-        const result =
-          token.operator === "+" ? Exact.add(left, right)
-          : token.operator === "-" ? Exact.subtract(left, right)
-          : token.operator === "*" ? Exact.multiply(left, right)
-          : token.operator === "÷" ? Exact.divide(left, right)
-          : Exact.power(left, right);
-
+        const result = EXACTLY[token.operator](left, right);
         if (result === null) return null;
         stack.push(result);
         break;

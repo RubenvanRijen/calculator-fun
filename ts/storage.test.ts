@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { loadState, saveState, clearState } from "@/storage.ts";
+import { loadState, saveState } from "@/storage.ts";
 import type { PersistedState } from "@/interfaces/persisted-state.ts";
 
 /**
@@ -90,15 +90,6 @@ describe("storage", () => {
   });
 
   it("returns nothing when there is nothing saved", () => {
-    expect(loadState(storage)).toEqual({});
-  });
-
-  it("clears", () => {
-    saveState(
-      { ...EMPTY, memory: 1 },
-      storage
-    );
-    clearState(storage);
     expect(loadState(storage)).toEqual({});
   });
 
@@ -197,10 +188,6 @@ describe("storage", () => {
           hostileStorage()
         )
       ).not.toThrow();
-    });
-
-    it("clears without throwing", () => {
-      expect(() => clearState(hostileStorage())).not.toThrow();
     });
 
     it("treats a null storage as absent", () => {

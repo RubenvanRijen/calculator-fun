@@ -18,7 +18,10 @@ ts/
   calculator.ts       the facade the UI talks to, no DOM
   expression-buffer.ts  the text being edited, and the caret in it
   history-log.ts      past calculations
+  entry-recall.ts     the list the up and down arrows walk, and where in it
   memory-register.ts  the M keys
+  environment.ts      the angle mode, Ans and the letters: what survives AC
+  exact-result.ts     the last answer's exact reading, and the form it is in
   graph.ts            samples functions across a range
   analysis.ts         roots, intersections and turning points
   function-series.ts  the four Y expressions, shared by the graph and table
@@ -26,6 +29,7 @@ ts/
   stat-lists.ts       the two lists behind the Stats tab
   matrix.ts           matrix arithmetic: determinant, inverse, the rest
   matrices.ts         the two grids behind the Matrix tab
+  listeners.ts        the callback list those three stores share
   storage.ts          localStorage, guarded
   theme.ts            light/dark
   index.ts            composition root: builds the parts and wires them
@@ -38,6 +42,11 @@ ts/
     table-panel.ts    |
     stats-panel.ts    |
     matrix-panel.ts   |
+    graph-shapes.ts   the SVG the graph draws, as named pieces
+    graph-search.ts   root, min, max, intersect, slope and area
+    graph-window.ts   how a window is sized and how a bound is written
+    graph-readout.ts  the trace wording
+    read-number.ts    reading a number out of a field
   *.test.ts           unit tests
   types/              one type alias per file
   interfaces/         one interface per file
@@ -54,9 +63,10 @@ per file. No type or interface is declared anywhere else — `calculator.ts` and
 erases entirely, so nothing extra is loaded at runtime.
 
 The calculator logic is kept free of the DOM, so it can be tested without a
-browser. `Calculator` is a facade: it owns no text or history of its own but
-delegates to `ExpressionBuffer`, `HistoryLog` and `MemoryRegister`, which is
-what keeps it from growing into one thousand-line class. Everything that
+browser. `Calculator` is a facade: it owns no text, history, entry list,
+evaluation context or exact answer of its own but delegates each to a small
+class that does, which is what keeps it from growing into one thousand-line
+class. Everything that
 touches elements and listeners lives under `ts/ui/`, and `ts/index.ts` builds
 those parts and hands them to each other — it makes no decisions itself.
 

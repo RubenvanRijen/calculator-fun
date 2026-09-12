@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { Calculator, formatExpression, formatOperand, trailingOperation } from "@/calculator.ts";
+import { Calculator } from "@/calculator.ts";
+import {
+  formatExpression,
+  formatOperand,
+  significant,
+  trailingOperation,
+} from "@/format.ts";
 import type { Operation } from "@/types/operation.ts";
 
 /** Drive the calculator one keypress at a time, as a user would. */
@@ -340,6 +346,21 @@ describe("Calculator", () => {
     it("reports division by zero", () => {
       type(calculator, ["5", "÷", "0", "="]);
       expect(calculator.error).toBe("Cannot divide by zero");
+    });
+
+    // A failed parse is remembered like any other, so the second reading never
+    // reaches the parser. The message has to come back off the remembered
+    // failure rather than being replaced by a generic one.
+    it("reports the same parse error when the same text is computed again", () => {
+      const first = new Calculator();
+      first.insert("sin");
+      first.compute();
+      expect(first.error).toBe('Expected ( after "sin"');
+
+      const again = new Calculator();
+      again.insert("sin");
+      again.compute();
+      expect(again.error).toBe('Expected ( after "sin"');
     });
 
     it("clears the error on the next keypress", () => {
@@ -772,14 +793,22 @@ describe("exact answers", () => {
   let calculator: Calculator;
   beforeEach(() => { calculator = new Calculator(); });
 
+  // Both halves of every one of these, on purpose. resultDisplay shows the
+  // exact form when there is one, so a display that reads 1/2 says nothing
+  // about what the float evaluator made of the same expression -- and it is
+  // the float that Ans carries, that the next calculation continues from, and
+  // that the F<->D key swaps to. Asserting only the spelling let a completely
+  // wrong float answer through every one of these tests.
   it.each([
-    [["1", "÷", "3", "+", "1", "÷", "6", "="], "1/2"],
-    [["√", "8", ")", "="], "2√2"],
-    [["2", "÷", "4", "="], "1/2"],
-    [["π", "÷", "4", "="], "π/4"],
-    [["1", "÷", "√", "2", ")", "="], "√2/2"],
-  ])("computes %j as %s", (keys, expected) => {
-    expect(type(calculator, keys).resultDisplay).toBe(expected);
+    [["1", "÷", "3", "+", "1", "÷", "6", "="], "1/2", 0.5],
+    [["√", "8", ")", "="], "2√2", 2 * Math.SQRT2],
+    [["2", "÷", "4", "="], "1/2", 0.5],
+    [["π", "÷", "4", "="], "π/4", Math.PI / 4],
+    [["1", "÷", "√", "2", ")", "="], "√2/2", Math.SQRT1_2],
+  ])("computes %j as %s", (keys, expected, value) => {
+    const computed = type(calculator, keys);
+    expect(computed.resultDisplay).toBe(expected);
+    expect(computed.lastAnswer).toBeCloseTo(value, 10);
   });
 
   it("shows sin(pi/4) as a surd", () => {
@@ -788,6 +817,7 @@ describe("exact answers", () => {
     calculator.appendFunction("sin");
     type(calculator, ["π", "÷", "4", ")", "="]);
     expect(calculator.resultDisplay).toBe("√2/2");
+    expect(calculator.lastAnswer).toBeCloseTo(Math.SQRT1_2, 10);
   });
 
   describe("which form is shown first", () => {
@@ -795,6 +825,7 @@ describe("exact answers", () => {
       type(calculator, ["1", "÷", "4", "="]);
       expect(calculator.isShowingExact).toBe(true);
       expect(calculator.resultDisplay).toBe("1/4");
+      expect(calculator.lastAnswer).toBe(0.25);
     });
 
     it("keeps the decimal when the question had one", () => {
@@ -941,6 +972,30 @@ describe("stored values", () => {
     calculator.appendRegister("A");
     type(calculator, ["+", "8", "="]);
     expect(calculator.resultDisplay).toBe("50");
+  });
+
+  // The parse of "A*3" is remembered, so the second = reads a token list that
+  // was built when A was 2. The value has to come off the register at
+  // evaluation, not off whatever was there when the text was first read.
+  it("uses a register's current value when the same expression is computed again", () => {
+    type(calculator, ["2"]);
+    calculator.store("A");
+    calculator.clear();
+    calculator.appendRegister("A");
+    type(calculator, ["*", "3", "="]);
+    expect(calculator.resultDisplay).toBe("6");
+
+    calculator.clear();
+    type(calculator, ["1", "0"]);
+    calculator.store("A");
+    calculator.clear();
+    calculator.appendRegister("A");
+    type(calculator, ["*", "3", "="]);
+    expect(calculator.resultDisplay).toBe("30");
+    // Both halves, because they are worked out by different evaluators over
+    // the same remembered tokens, and resultDisplay prefers the exact one --
+    // which would hide a stale answer on the float side entirely.
+    expect(calculator.lastAnswer).toBe(30);
   });
 
   it("says so rather than doing nothing when there is nothing to store", () => {
@@ -1438,6 +1493,43 @@ describe("formatOperand", () => {
     ["9.9999999998e+21", "9.9999999998e+21"],
   ])("formats %j as %j", (input, expected) => {
     expect(formatOperand(input)).toBe(expected);
+  });
+});
+
+describe("significant", () => {
+  it("rounds to the number of digits asked for", () => {
+    expect(significant(3.14159265, 4)).toBe(3.142);
+    expect(significant(123456789, 4)).toBe(123500000);
+    expect(significant(0.000123456, 3)).toBe(0.000123);
+  });
+
+  it("drops the zeros the rounding leaves behind", () => {
+    // The whole point of reading the string back as a number: toPrecision
+    // alone answers "1.5000000", which is what four displays would show.
+    expect((1.5).toPrecision(8)).toBe("1.5000000");
+    expect(String(significant(1.5, 8))).toBe("1.5");
+    expect(String(significant(2, 12))).toBe("2");
+  });
+
+  it("keeps the zeros that are part of the number", () => {
+    // The zeros in 1000 are the number; the ones in "1.5000000" are padding.
+    // Anything that takes them off by looking at the end of the string turns
+    // a table's x column from 1000 into 1.
+    expect(significant(10, 2)).toBe(10);
+    expect(significant(1000, 4)).toBe(1000);
+    expect(significant(1000, 8)).toBe(1000);
+    expect(significant(1.05, 3)).toBe(1.05);
+  });
+
+  it("leaves a number alone when it is shorter than the digits asked for", () => {
+    expect(significant(7, 4)).toBe(7);
+    expect(significant(0.25, 8)).toBe(0.25);
+  });
+
+  it("takes the float dust off a number that has some", () => {
+    // What roundResult wants it for: 0.1 + 0.2 is 0.30000000000000004, which
+    // takes seventeen digits to say, so twelve of them round it back to 0.3.
+    expect(significant(0.1 + 0.2, 12)).toBe(0.3);
   });
 });
 

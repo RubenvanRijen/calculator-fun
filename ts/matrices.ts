@@ -1,8 +1,12 @@
 import type { Matrix } from "@/types/matrix.ts";
+import { Listeners } from "@/listeners.ts";
 import type { MatrixName } from "@/types/matrix-name.ts";
 
-/** Both matrices, in the order they are shown. */
-export const MATRIX_NAMES: readonly MatrixName[] = ["A", "B"];
+const MATRICES: Readonly<Record<MatrixName, true>> = { A: true, B: true };
+
+/** Both matrices, in the order they are shown -- and all of them. */
+export const MATRIX_NAMES: readonly MatrixName[] =
+  Object.keys(MATRICES) as MatrixName[];
 
 /** The largest grid the panel offers, which is what fits in the panel. */
 export const MAX_SIZE = 4;
@@ -27,7 +31,7 @@ function clamp(value: number): number {
  */
 export class MatrixStore {
   readonly #grids: Record<MatrixName, number[][]>;
-  readonly #listeners: (() => void)[] = [];
+  readonly #listeners = new Listeners();
 
   constructor(saved: Partial<Record<MatrixName, Matrix>> = {}) {
     this.#grids = {
@@ -75,7 +79,7 @@ export class MatrixStore {
     this.#grids[name] = Array.from({ length: wanted.rows }, (_, row) =>
       Array.from({ length: wanted.columns }, (_, column) => old[row]?.[column] ?? 0)
     );
-    this.#notify();
+    this.#listeners.notify();
   }
 
   /** Put a number in one cell. Anything that is not one reads as zero. */
@@ -87,21 +91,11 @@ export class MatrixStore {
     if (target[column] === cleaned) return;
 
     target[column] = cleaned;
-    this.#notify();
+    this.#listeners.notify();
   }
 
   /** Run `listener` whenever either matrix changes, until `signal` aborts. */
   onChange(listener: () => void, signal: AbortSignal): void {
-    if (signal.aborted) return;
-    this.#listeners.push(listener);
-
-    signal.addEventListener("abort", () => {
-      const at = this.#listeners.indexOf(listener);
-      if (at !== -1) this.#listeners.splice(at, 1);
-    }, { once: true });
-  }
-
-  #notify(): void {
-    for (const listener of this.#listeners) listener();
+    this.#listeners.add(listener, signal);
   }
 }

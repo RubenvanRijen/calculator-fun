@@ -1,15 +1,25 @@
 import { isOperation } from "@/expression.ts";
+import { queryIn } from "@/ui/query.ts";
 import type { Calculator } from "@/calculator.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 
 /** How long a key flashes when driven from the keyboard. */
 const FLASH_MS = 120;
 
-/** deg -> rad -> grad -> deg, the order the mode key cycles through. */
+/**
+ * The order the mode key walks, which is data rather than control flow.
+ *
+ * A Record over the union, so a mode the calculator gains cannot be left out
+ * of the cycle and become a mode the key can never reach.
+ */
+const CYCLE: Readonly<Record<AngleMode, AngleMode>> = {
+  deg: "rad",
+  rad: "grad",
+  grad: "deg",
+};
+
 function nextAngleMode(mode: AngleMode): AngleMode {
-  if (mode === "deg") return "rad";
-  if (mode === "rad") return "grad";
-  return "deg";
+  return CYCLE[mode];
 }
 
 /**
@@ -32,11 +42,11 @@ export class Keypad {
   constructor(
     root: Document | HTMLElement,
     doc: Document,
-    calculator: Calculator,
     signal: AbortSignal,
+    calculator: Calculator,
     onChange: () => void
   ) {
-    const element = root.querySelector<HTMLElement>("[data-keypad]");
+    const element = queryIn(root)("[data-keypad]");
     // Every key is wired through this wrapper, so its absence would leave a
     // page where nothing responds and nothing explains why.
     if (!element) throw new Error("Calculator markup is missing [data-keypad].");

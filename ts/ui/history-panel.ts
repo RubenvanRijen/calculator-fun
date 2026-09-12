@@ -1,3 +1,4 @@
+import { queryIn } from "@/ui/query.ts";
 import type { Calculator } from "@/calculator.ts";
 import type { HistoryEntry } from "@/interfaces/history-entry.ts";
 
@@ -18,8 +19,9 @@ export class HistoryPanel {
     signal: AbortSignal,
     onRecall: (value: string) => void
   ) {
-    this.#list = root.querySelector<HTMLElement>("[data-history-list]");
-    this.#empty = root.querySelector<HTMLElement>("[data-history-empty]");
+    const query = queryIn(root);
+    this.#list = query("[data-history-list]");
+    this.#empty = query("[data-history-empty]");
     this.#doc = doc;
     this.#signal = signal;
     this.#onRecall = onRecall;

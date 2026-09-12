@@ -12,6 +12,7 @@ import { StatLists } from "@/stat-lists.ts";
 import { setupMatrixPanel } from "@/ui/matrix-panel.ts";
 import { MatrixStore } from "@/matrices.ts";
 import { FunctionSeries, SERIES_COUNT } from "@/function-series.ts";
+import { queryIn } from "@/ui/query.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
 import type { Theme } from "@/types/theme.ts";
@@ -25,6 +26,7 @@ import type { Theme } from "@/types/theme.ts";
  */
 export function setupCalculator(root: Document | HTMLElement): CalculatorHandle {
   const doc = root instanceof Document ? root : root.ownerDocument;
+  const query = queryIn(root);
 
   // Every listener is registered against this signal, so destroy() is a single
   // abort rather than a list that drifts out of date. `root` and `doc` outlive
@@ -46,7 +48,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   const matrices = new MatrixStore(saved.matrices ?? {});
 
   let theme: Theme = saved.theme ?? preferredTheme();
-  const themeIcon = root.querySelector<HTMLElement>("[data-theme-icon]");
+  const themeIcon = query("[data-theme-icon]");
 
   const applyCurrentTheme = (): void => {
     applyTheme(theme, doc.documentElement);
@@ -98,7 +100,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     persist();
   }
 
-  const keypad = new Keypad(root, doc, calculator, signal, update);
+  const keypad = new Keypad(root, doc, signal, calculator, update);
   // The graph and the table are two views of one set of functions, so the
   // expressions live outside both of them.
   const series = new FunctionSeries(
@@ -106,62 +108,36 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     // document order would put Y3's text into Y2 the day the markup is
     // reordered, and the panel would then disagree with the model.
     Array.from({ length: SERIES_COUNT }, (_, index) =>
-      root.querySelector<HTMLInputElement>(`[data-graph-input="${index}"]`)?.value ?? ""
+      query<HTMLInputElement>(`[data-graph-input="${index}"]`)?.value ?? ""
     )
   );
   const graphContext = (): EvalContext => ({
     registers: calculator.registers,
     ans: calculator.lastAnswer ?? undefined,
   });
-  // Whether the graph is showing the statistics data. The points themselves
-  // are read from the lists each time rather than copied, so editing a cell
-  // moves its point and clearing the lists takes the scatter with it -- a
-  // snapshot would go on showing data that had been deleted.
-  let plottingData = false;
-  const scatterToggle = root.querySelector<HTMLElement>("[data-graph-scatter]");
-
   const graph = setupGraphPanel(
-    root, doc, signal, series, graphContext,
-    () => (plottingData ? lists.pairs() : [])
+    root, doc, signal, series, graphContext, () => lists.pairs()
   );
   const table = setupTablePanel(root, doc, signal, series, graphContext);
 
-  /**
-   * Turn the scatter on or off.
-   *
-   * It needs an off: while data is on the chart the window frames the data,
-   * so an ordinary curve is drawn against the data's scale and can end up far
-   * off the top of the box. Without this the only ways back would be deleting
-   * the data or reloading the page.
-   */
-  function showScatter(on: boolean): void {
-    plottingData = on;
-    scatterToggle?.classList.toggle("is-active", on);
-    scatterToggle?.setAttribute("aria-pressed", String(on));
-    graph.render();
-  }
+  const matrixPanel = setupMatrixPanel(root, doc, signal, matrices);
 
-  scatterToggle?.addEventListener("click", () => {
-    showScatter(!plottingData);
-  }, { signal });
+  // No redraw on either: both stores are edited only from their own tab, so
+  // the graph is never on screen when they change, and showing it renders it.
+  lists.onChange(persist, signal);
+  matrices.onChange(persist, signal);
 
   const stats = setupStatsPanel(root, doc, signal, lists, (fit) => {
-
     // Fit the window to the data, or the points land off the edge of whatever
     // range was left over from the last thing plotted.
-    const xs = lists.pairs().map((point) => point.x);
-    const margin = Math.max((Math.max(...xs) - Math.min(...xs)) * 0.1, 1);
-    const minInput = root.querySelector<HTMLInputElement>("[data-graph-min]");
-    const maxInput = root.querySelector<HTMLInputElement>("[data-graph-max]");
-    if (minInput) minInput.value = String(parseFloat((Math.min(...xs) - margin).toPrecision(6)));
-    if (maxInput) maxInput.value = String(parseFloat((Math.max(...xs) + margin).toPrecision(6)));
+    graph.frameTo(lists.pairs());
 
     // The fit goes in the first free slot, so a curve already being looked at
     // is not overwritten by pressing plot.
     const free = series.all().findIndex((expression) => expression === "");
     series.set(free === -1 ? SERIES_COUNT - 1 : free, fit);
 
-    showScatter(true);
+    graph.showScatter(true);
     showTab("graph");
   });
 
@@ -191,7 +167,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     { signal }
   );
 
-  root.querySelector<HTMLElement>("[data-theme-toggle]")?.addEventListener(
+  query("[data-theme-toggle]")?.addEventListener(
     "click",
     () => {
       theme = otherTheme(theme);
@@ -201,7 +177,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     { signal }
   );
 
-  root.querySelector<HTMLElement>("[data-history-clear]")?.addEventListener(
+  query("[data-history-clear]")?.addEventListener(
     "click",
     () => {
       calculator.clearHistory();
@@ -214,13 +190,6 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   const tabs = [...root.querySelectorAll<HTMLElement>("[data-tab]")];
   const panels = [...root.querySelectorAll<HTMLElement>("[data-panel]")];
   /** What to do when a panel becomes visible, keyed by its name. */
-  // No redraw here: the lists can only be edited from the Stats tab, so the
-  // graph is never on screen when they change, and showing it renders it.
-  lists.onChange(persist, signal);
-  matrices.onChange(persist, signal);
-
-  const matrixPanel = setupMatrixPanel(root, doc, signal, matrices);
-
   const onShow: Record<string, () => void> = {
     graph: graph.render,
     table: table.render,

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { OPERATOR_SPELLINGS } from "@/format.ts";
 import { evaluateString, tokenize, toRpn, isOperation } from "@/expression.ts";
 
 describe("precedence", () => {
@@ -545,5 +546,27 @@ describe("a leading plus", () => {
   it("does not make an operator optional", () => {
     // Dropping the sign must not turn "2 3" into anything.
     expect(() => value("2 3")).toThrow();
+  });
+});
+
+describe("operator spellings", () => {
+  it("lists every operator", () => {
+    // Missing one would make trailingOperatorLength blind to it, so pressing
+    // it twice would stack two rather than replacing the first.
+    for (const operation of ["+", "-", "*", "÷", "^", "nCr", "nPr"]) {
+      expect(OPERATOR_SPELLINGS).toContain(operation);
+    }
+    expect(OPERATOR_SPELLINGS).toHaveLength(7);
+  });
+
+  it("lists longer spellings first, however they are declared", () => {
+    // operatorAt takes the first match it finds, so a spelling has to come
+    // before anything it starts with. No operator is a prefix of another
+    // today, which is exactly why this asserts the ordering itself rather
+    // than the prefix rule: the prefix rule holds either way just now, and
+    // would go on holding right up until an operator spelled "**" was added
+    // after "*" and "2**3" started reading as "2 * *3".
+    const lengths = OPERATOR_SPELLINGS.map((spelling) => spelling.length);
+    expect(lengths).toEqual([...lengths].sort((a, b) => b - a));
   });
 });
