@@ -411,6 +411,14 @@ describe("regressions", () => {
     expect(calculator.resultDisplay).toBe("0.000001");
   });
 
+  it("starts afresh when ± follows =, rather than rewriting the result", () => {
+    type(calculator, ["5", "+", "3", "="]);
+    type(calculator, ["±"]);
+    // Without the guard this negates the 3 inside the finished "5+3".
+    expect(calculator.expression).toBe("-8");
+    expect(calculator.resultDisplay).toBe("-8");
+  });
+
   it("starts afresh when % follows =, rather than rewriting the result", () => {
     type(calculator, ["5", "+", "3", "="]);
     type(calculator, ["%"]);
