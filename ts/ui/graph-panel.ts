@@ -1,5 +1,4 @@
 import { compileCurve, plotAll } from "@/graph.ts";
-import { derivative, findExtremum, findIntersection, findRoot, integrate } from "@/analysis.ts";
 import { SERIES_COUNT } from "@/function-series.ts";
 import { readNumber } from "@/ui/read-number.ts";
 import {
@@ -14,13 +13,13 @@ import {
   segmentD,
 } from "@/ui/graph-shapes.ts";
 import { boundText, windowAround } from "@/ui/graph-window.ts";
-import { traceText, trim } from "@/ui/graph-readout.ts";
+import { traceText } from "@/ui/graph-readout.ts";
+import { search } from "@/ui/graph-search.ts";
 import type { FunctionSeries } from "@/function-series.ts";
 import type { MultiPlotResult } from "@/interfaces/multi-plot-result.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { Curve } from "@/types/curve.ts";
 import type { PlotPoint } from "@/interfaces/plot-point.ts";
-import type { ExtremumKind } from "@/types/extremum-kind.ts";
 
 /** How far one press of the trace arrows moves, as a share of the range. */
 const TRACE_STEP = 1 / 60;
@@ -280,55 +279,31 @@ export function setupGraphPanel(
       return;
     }
 
-    if (what === "slope") {
-      // Where the trace is, or the middle of the window if it is not running.
-      const x = traced?.x ?? (range.xMin + range.xMax) / 2;
-      const slope = derivative(curve, x);
-      if (readout) {
-        readout.textContent = slope === null
-          ? `No slope at x = ${trim(x)}`
-          : `Y${series + 1}   x = ${trim(x)}   dy/dx = ${trim(slope)}`;
-      }
+    const outcome = search(
+      what,
+      series,
+      curve,
+      () => {
+        const other = visible.find((index) => index !== series);
+        return other === undefined ? null : curveFor(other);
+      },
+      range.xMin,
+      range.xMax,
+      traced?.x ?? (range.xMin + range.xMax) / 2
+    );
+
+    if (outcome.kind === "trace") {
+      showTrace(series, outcome.x, outcome.y);
       return;
     }
 
-    if (what === "area") {
-      const area = integrate(curve, range.xMin, range.xMax);
-      if (area === null) {
-        shaded = null;
-        render();
-        if (readout) readout.textContent = "No area across this range";
-        return;
-      }
-      shaded = { series, xMin: range.xMin, xMax: range.xMax };
+    // The shading first and the wording last: shading means a redraw, and a
+    // redraw can clear the readout out from under the answer.
+    if (outcome.kind === "area") {
+      shaded = outcome.shade ? { series, xMin: range.xMin, xMax: range.xMax } : null;
       render();
-      if (readout) {
-        readout.textContent =
-          `Y${series + 1}   \u222b from ${trim(range.xMin)} to ${trim(range.xMax)} = ${trim(area)}`;
-      }
-      return;
     }
-
-    let found = null;
-    if (what === "root") {
-      found = findRoot(curve, range.xMin, range.xMax);
-    } else if (what === "min" || what === "max") {
-      found = findExtremum(curve, range.xMin, range.xMax, what as ExtremumKind);
-    } else if (what === "intersect") {
-      const other = visible.find((index) => index !== series);
-      const otherCurve = other === undefined ? null : curveFor(other);
-      if (otherCurve === null) {
-        if (readout) readout.textContent = "Intersect needs two curves";
-        return;
-      }
-      found = findIntersection(curve, otherCurve, range.xMin, range.xMax);
-    }
-
-    if (found === null) {
-      if (readout) readout.textContent = `No ${what} in this range`;
-      return;
-    }
-    showTrace(series, found.x, found.y);
+    if (readout) readout.textContent = outcome.text;
   }
 
   // --- wiring ---------------------------------------------------------------
