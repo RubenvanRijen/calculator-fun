@@ -5,11 +5,20 @@ import type { AngleMode } from "@/types/angle-mode.ts";
 /** How long a key flashes when driven from the keyboard. */
 const FLASH_MS = 120;
 
-/** deg -> rad -> grad -> deg, the order the mode key cycles through. */
+/**
+ * The order the mode key walks, which is data rather than control flow.
+ *
+ * A Record over the union, so a mode the calculator gains cannot be left out
+ * of the cycle and become a mode the key can never reach.
+ */
+const CYCLE: Readonly<Record<AngleMode, AngleMode>> = {
+  deg: "rad",
+  rad: "grad",
+  grad: "deg",
+};
+
 function nextAngleMode(mode: AngleMode): AngleMode {
-  if (mode === "deg") return "rad";
-  if (mode === "rad") return "grad";
-  return "deg";
+  return CYCLE[mode];
 }
 
 /**

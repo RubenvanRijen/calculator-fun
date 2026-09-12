@@ -4,6 +4,8 @@ import type { Theme } from "@/types/theme.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 import type { RegisterName } from "@/types/register-name.ts";
 import type { StatRow } from "@/interfaces/stat-row.ts";
+import { REGISTER_NAMES } from "@/expression.ts";
+import { MATRIX_NAMES } from "@/matrices.ts";
 import type { Matrix } from "@/types/matrix.ts";
 import type { MatrixName } from "@/types/matrix-name.ts";
 
@@ -21,6 +23,17 @@ function safeStorage(): Storage | null {
     return null;
   }
 }
+
+const MODES: Readonly<Record<AngleMode, true>> = { deg: true, rad: true, grad: true };
+
+/**
+ * Every angle mode, so a saved one is recognised by being in the list rather
+ * than by being compared against three names written out here.
+ *
+ * Membership is tested against the list, not with `in`: every object has a
+ * "toString", and a saved state saying so should not be taken for a mode.
+ */
+const ANGLE_MODES: readonly AngleMode[] = Object.keys(MODES) as AngleMode[];
 
 /** Read saved state, ignoring anything malformed. */
 export function loadState(storage: Storage | null = safeStorage()): Partial<PersistedState> {
@@ -69,12 +82,9 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
     if (record["theme"] === "light" || record["theme"] === "dark") {
       state.theme = record["theme"];
     }
-    if (
-      record["angleMode"] === "deg" ||
-      record["angleMode"] === "rad" ||
-      record["angleMode"] === "grad"
-    ) {
-      state.angleMode = record["angleMode"];
+    const mode = record["angleMode"];
+    if (ANGLE_MODES.some((known) => known === mode)) {
+      state.angleMode = mode as AngleMode;
     }
     if (record["lastAnswer"] === null) {
       state.lastAnswer = null;
@@ -87,7 +97,7 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
     const saved = record["registers"];
     if (typeof saved === "object" && saved !== null) {
       const registers: Partial<Record<RegisterName, number>> = {};
-      for (const name of ["A", "B", "C", "D"] as const) {
+      for (const name of REGISTER_NAMES) {
         const value = (saved as Record<string, unknown>)[name];
         if (typeof value === "number" && Number.isFinite(value)) registers[name] = value;
       }
@@ -111,7 +121,7 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
       // where a number should be -- reads as a zero in that cell rather than
       // taking the matrix down with it.
       const matrices: Partial<Record<MatrixName, Matrix>> = {};
-      for (const name of ["A", "B"] as const) {
+      for (const name of MATRIX_NAMES) {
         const grid = (grids as Record<string, unknown>)[name];
         if (!Array.isArray(grid)) continue;
 

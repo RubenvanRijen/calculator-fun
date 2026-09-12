@@ -4,6 +4,18 @@
  * display and the history can format the same way.
  */
 
+import type { Operation } from "@/types/operation.ts";
+
+const SPELLED: Readonly<Record<Operation, true>> = {
+  "+": true,
+  "-": true,
+  "*": true,
+  "÷": true,
+  "^": true,
+  nCr: true,
+  nPr: true,
+};
+
 /**
  * Every way an operator can be written, longest first.
  *
@@ -11,10 +23,15 @@
  * one character, and half the editing rules tested `text[text.length - 1]`
  * against a string of symbols. Everything that needs to know "does this end
  * with an operator" goes through trailingOperatorLength instead.
+ *
+ * Two guarantees, and both are made rather than asked for. The Record makes
+ * leaving an operator out a build error. The sort makes the order right
+ * however the Record happens to be written: operatorAt matches by prefix and
+ * takes the first hit, so an operator spelled "**" listed after "*" would
+ * have "2**3" read as "2 * *3".
  */
-export const OPERATOR_SPELLINGS: readonly string[] = [
-  "nCr", "nPr", "+", "-", "*", "÷", "^",
-];
+export const OPERATOR_SPELLINGS: readonly string[] =
+  Object.keys(SPELLED).sort((a, b) => b.length - a.length);
 
 /** How many characters the operator at the end of `text` takes, or 0. */
 export function trailingOperatorLength(text: string): number {

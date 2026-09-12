@@ -1,8 +1,6 @@
 import type { Calculator } from "@/calculator.ts";
 import type { RegisterName } from "@/types/register-name.ts";
-
-/** The letters offered, in the order they are listed. */
-const NAMES: readonly RegisterName[] = ["A", "B", "C", "D"];
+import { REGISTER_NAMES as NAMES } from "@/expression.ts";
 
 /**
  * The Vars tab: one row per letter, showing what is stored and offering to

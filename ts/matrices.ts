@@ -2,8 +2,11 @@ import type { Matrix } from "@/types/matrix.ts";
 import { Listeners } from "@/listeners.ts";
 import type { MatrixName } from "@/types/matrix-name.ts";
 
-/** Both matrices, in the order they are shown. */
-export const MATRIX_NAMES: readonly MatrixName[] = ["A", "B"];
+const MATRICES: Readonly<Record<MatrixName, true>> = { A: true, B: true };
+
+/** Both matrices, in the order they are shown -- and all of them. */
+export const MATRIX_NAMES: readonly MatrixName[] =
+  Object.keys(MATRICES) as MatrixName[];
 
 /** The largest grid the panel offers, which is what fits in the panel. */
 export const MAX_SIZE = 4;
