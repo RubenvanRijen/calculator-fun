@@ -1,8 +1,9 @@
-import { add, subtract, multiply, transpose, determinant, inverse } from "@/matrix.ts";
+import { applyMatrixOp, isMatrixOp } from "@/ui/matrix-operations.ts";
 import { MATRIX_NAMES, MAX_SIZE } from "@/matrices.ts";
 import { readNumber } from "@/ui/read-number.ts";
 import type { MatrixStore } from "@/matrices.ts";
 import type { Matrix } from "@/types/matrix.ts";
+import type { MatrixOp } from "@/types/matrix-op.ts";
 import type { MatrixName } from "@/types/matrix-name.ts";
 
 /**
@@ -42,7 +43,7 @@ export function setupMatrixPanel(
   const errorElement = query("[data-matrix-error]");
 
   /** Which operation is on screen, so editing a cell brings the answer with it. */
-  let showing: string | null = null;
+  let showing: MatrixOp | null = null;
 
   function grid(name: MatrixName): HTMLElement | null {
     return query(`[data-matrix-grid="${name}"]`);
@@ -129,18 +130,9 @@ export function setupMatrixPanel(
     }
 
     try {
-      const a = store.get("A");
-      const b = store.get("B");
-
-      if (showing === "add") showMatrix(add(a, b));
-      else if (showing === "subtract") showMatrix(subtract(a, b));
-      else if (showing === "multiply") showMatrix(multiply(a, b));
-      else if (showing === "transpose-A") showMatrix(transpose(a));
-      else if (showing === "transpose-B") showMatrix(transpose(b));
-      else if (showing === "determinant-A") showScalar("det A", determinant(a));
-      else if (showing === "determinant-B") showScalar("det B", determinant(b));
-      else if (showing === "inverse-A") showMatrix(inverse(a));
-      else if (showing === "inverse-B") showMatrix(inverse(b));
+      const outcome = applyMatrixOp(showing, { A: store.get("A"), B: store.get("B") });
+      if (outcome.kind === "matrix") showMatrix(outcome.value);
+      else showScalar(outcome.label, outcome.value);
 
       if (errorElement) errorElement.hidden = true;
     } catch (cause) {
@@ -212,7 +204,14 @@ export function setupMatrixPanel(
       : null;
     if (button === null) return;
 
-    showing = button.dataset["matrixDo"] ?? null;
+    // Narrowed here rather than compared against nine strings further in: an
+    // unknown name used to fall through every branch and leave the previous
+    // answer on screen with the error cleared, so a broken button looked
+    // exactly like a working one.
+    const name = button.dataset["matrixDo"];
+    if (!isMatrixOp(name)) return;
+
+    showing = name;
     renderResult();
   }, { signal });
 
