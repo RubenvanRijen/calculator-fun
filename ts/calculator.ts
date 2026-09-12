@@ -1,5 +1,4 @@
-import { evaluateString, isOperation, toRpn, tokenize } from "@/expression.ts";
-import { evaluateExactRpn } from "@/exact-evaluator.ts";
+import { isOperation } from "@/expression.ts";
 import {
   isInteger as isExactInteger,
   toDisplay as toExactDisplay,
@@ -11,6 +10,7 @@ import { ExpressionBuffer } from "@/expression-buffer.ts";
 import { HistoryLog } from "@/history-log.ts";
 import { MemoryRegister } from "@/memory-register.ts";
 import { EntryRecall } from "@/entry-recall.ts";
+import { Environment } from "@/environment.ts";
 import {
   balanceParentheses,
   expectsOperand,
@@ -43,27 +43,21 @@ export class Calculator {
   readonly #history = new HistoryLog();
   readonly #memory = new MemoryRegister();
   readonly #recall = new EntryRecall();
+  /** The angle mode, Ans and the stored letters: what survives AC. */
+  readonly #environment = new Environment();
 
   /** Set when the last action could not be completed. Cleared on next input. */
   error: string | null = null;
 
-  #angleMode: AngleMode = "rad";
   #result: string | null = null;
   #preview = "";
   #justComputed = false;
   /** The trailing "+3" of the last sum, so "=" can be pressed again. */
   #repeatTail: string | null = null;
-  /**
-   * The last computed value, kept apart from #result because it has to outlive
-   * AC: on the hardware Ans survives a clear the way memory does.
-   */
-  #lastAnswer: number | null = null;
   /** How the last result reads exactly, when it has an exact form. */
   #exact: string | null = null;
   /** The same value, kept so it can be carried forward without rounding. */
   #exactValue: ExactValue | null = null;
-  /** Values stored under A, B, C and D. */
-  #registers: Partial<Record<RegisterName, number>> = {};
   /** Whether the display is showing the exact form rather than the decimal. */
   #showingExact = true;
   /** Whether the entry being typed used the mixed-number key. */
@@ -97,7 +91,7 @@ export class Calculator {
 
   /** How trigonometry reads its arguments. Survives AC, like memory. */
   get angleMode(): AngleMode {
-    return this.#angleMode;
+    return this.#environment.angleMode;
   }
 
   /**
@@ -105,13 +99,14 @@ export class Calculator {
    * showing a value worked out in the previous mode, and M+ would bank it.
    */
   set angleMode(mode: AngleMode) {
-    this.#angleMode = mode;
+    this.#environment.angleMode = mode;
+    // The mode first, then the preview, which reads it.
     this.#refreshPreview();
   }
 
   /** What is stored under each letter. */
   get registers(): Readonly<Partial<Record<RegisterName, number>>> {
-    return this.#registers;
+    return this.#environment.registers;
   }
 
   /** Store the value currently on the display under `name`. */
@@ -122,16 +117,14 @@ export class Calculator {
       return;
     }
     this.error = null;
-    this.#registers = { ...this.#registers, [name]: value };
+    this.#environment.store(name, value);
     // What is on screen may depend on this register.
     this.#refreshPreview();
   }
 
   /** Forget what is stored under `name`. */
   clearRegister(name: RegisterName): void {
-    const next = { ...this.#registers };
-    delete next[name];
-    this.#registers = next;
+    this.#environment.clearRegister(name);
     this.#refreshPreview();
   }
 
@@ -272,14 +265,14 @@ export class Calculator {
   }): void {
     this.#history.restore(state.history ?? []);
     this.#memory.value = state.memory ?? 0;
-    this.#lastAnswer = state.lastAnswer ?? null;
+
     this.#recall.restore(state.entries ?? []);
-    this.#registers = { ...(state.registers ?? {}) };
+    this.#environment.restore(state);
   }
 
   /** The value Ans refers to, for persistence. */
   get lastAnswer(): number | null {
-    return this.#lastAnswer;
+    return this.#environment.lastAnswer;
   }
 
   /** The expressions the arrows walk through, for persistence. */
@@ -490,7 +483,7 @@ export class Calculator {
     const operator = before[before.length - 1] ?? "";
 
     if ((operator === "+" || operator === "-") && before.length > 1) {
-      const base = this.#tryEvaluate(before.slice(0, -1));
+      const base = this.#environment.tryEvaluate(before.slice(0, -1));
       if (base !== null) {
         this.#buffer.replaceRange(start, end, `(${base}*${literal}/100)`);
         this.#refreshPreview();
@@ -559,11 +552,7 @@ export class Calculator {
 
     let value: number;
     try {
-      value = evaluateString(expression, {
-        angleMode: this.#angleMode,
-        ans: this.#previousAnswer(),
-        registers: this.#registers,
-      });
+      value = this.#environment.evaluate(expression);
     } catch (cause) {
       this.error = cause instanceof Error ? cause.message : "Invalid expression";
       return;
@@ -575,7 +564,7 @@ export class Calculator {
     }
 
     const result = roundResult(value).toString();
-    this.#exactValue = this.#exactValueOf(expression);
+    this.#exactValue = this.#environment.exactValueOf(expression);
     this.#exact = this.#displayableExact(this.#exactValue, result);
     // An answer keeps the form of the question, as it does on the hardware:
     // ask in fractions and get a fraction, ask in decimals and get a decimal.
@@ -601,7 +590,7 @@ export class Calculator {
 
     this.#buffer.replace(expression);
     this.#result = result;
-    this.#lastAnswer = roundResult(value);
+    this.#environment.remember(value);
     this.#preview = result;
     this.#justComputed = true;
   }
@@ -672,26 +661,6 @@ export class Calculator {
   toggleExact(): void {
     if (!this.hasExactForm) return;
     this.#showingExact = !this.#showingExact;
-  }
-
-  /**
-   * The exact reading of an expression, when it has one worth showing.
-   *
-   * A plain integer is skipped: 2 + 2 is 4 either way, and an "exact" badge on
-   * it would be noise. Anything the exact evaluator cannot represent, or that
-   * disagrees with the decimal, is skipped too -- the two must never show
-   * different numbers.
-   */
-  #exactValueOf(expression: string): ExactValue | null {
-    try {
-      return evaluateExactRpn(toRpn(tokenize(expression)), {
-        angleMode: this.#angleMode,
-        ans: this.#previousAnswer(),
-        registers: this.#registers,
-      });
-    } catch {
-      return null;
-    }
   }
 
   /**
@@ -784,27 +753,13 @@ export class Calculator {
     }
     const withoutTail = balanceParentheses(stripped);
     for (const candidate of [whole, withoutTail]) {
-      const value = this.#tryEvaluate(candidate);
+      const value = this.#environment.tryEvaluate(candidate);
       if (value !== null) {
         this.#preview = value;
         return;
       }
     }
     this.#preview = "";
-  }
-
-  #tryEvaluate(expression: string): string | null {
-    if (expression === "") return null;
-    try {
-      const value = evaluateString(expression, {
-        angleMode: this.#angleMode,
-        ans: this.#previousAnswer(),
-        registers: this.#registers,
-      });
-      return Number.isFinite(value) ? roundResult(value).toString() : null;
-    } catch {
-      return null;
-    }
   }
 
   /** Put an entry in the buffer; nothing to put there means clear it. */
@@ -816,11 +771,6 @@ export class Calculator {
     }
     this.#justComputed = false;
     this.#refreshPreview();
-  }
-
-  /** What Ans resolves to, or undefined before anything has been computed. */
-  #previousAnswer(): number | undefined {
-    return this.#lastAnswer ?? undefined;
   }
 
   /** After "=", the next edit continues from the balanced expression. */
