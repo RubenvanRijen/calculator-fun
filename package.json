@@ -1,0 +1,42 @@
+{
+  "name": "calculator-fun",
+  "version": "1.0.0",
+  "description": "fun calculator project, in TypeScript",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "typecheck": "npm run typecheck:src && npm run typecheck:tests",
+    "typecheck:src": "tsc -p tsconfig.json --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json",
+    "check": "npm run typecheck && npm run test",
+    "docker:up": "docker compose up --build",
+    "docker:dev": "docker compose --profile dev up --build dev",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RubenvanRijen/calculator-fun.git"
+  },
+  "author": "RubenR",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RubenvanRijen/calculator-fun/issues"
+  },
+  "homepage": "https://github.com/RubenvanRijen/calculator-fun#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.2",
+    "@vitest/coverage-v8": "^2.1.8",
+    "jsdom": "^25.0.1",
+    "serve": "^14.2.6",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    // A browser floor, not a quality dial: ES2022 = Chrome 94+, FF 93+, Safari
+    // 15.4+. Nothing here is newer, so es2024/esnext emit identical output.
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "outDir": "dist",
+    "rootDir": "ts",
+    "sourceMap": true,
+    "declaration": true,
+
+    /* Strictness. `strict` is the baseline; the rest are the extras that
+       actually catch things in this codebase. */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "useUnknownInCatchVariables": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Module hygiene: imports must say exactly what they are, and type-only
+       imports must be written as such so emit never depends on inference. */
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+
+    "types": ["vitest/globals"]
+  },
+  "include": ["ts/**/*.ts"],
+  "exclude": ["ts/**/*.test.ts"]
+}

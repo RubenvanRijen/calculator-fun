@@ -5,35 +5,129 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calculator fun Ruben</title>
-    <link href="styles.css" rel="stylesheet">
-    <script src="index.js" defer></script>
+    <link href="/favicon.svg" rel="icon" type="image/svg+xml">
+    <link href="/styles.css" rel="stylesheet">
+    <script type="module" src="/dist/index.js" defer></script>
 </head>
 
 <body>
-    <div class="calculator-grid">
-        <div class="output">
-            <div data-previous-operand class="previous-operand"></div>
-            <div data-current-operand class="current-operand"></div>
+    <header class="topbar">
+        <h1 class="topbar-title">calculator-fun</h1>
+        <button data-theme-toggle class="theme-toggle" type="button" aria-label="Switch theme">
+            <span data-theme-icon>☾</span>
+        </button>
+    </header>
+
+    <main class="app">
+        <div class="calculator-grid">
+            <div class="output">
+                <div class="output-meta">
+                    <span data-memory-indicator class="badge" hidden>M</span>
+                    <span data-paren-indicator class="badge" hidden>( 0</span>
+                    <div data-expression class="expression" aria-live="polite"></div>
+                </div>
+                <div data-result class="result" aria-live="polite"></div>
+                <div data-error class="error" role="alert" hidden></div>
+            </div>
+
+            <button data-function="sqrt" class="key-small">√</button>
+            <button data-square class="key-small">x²</button>
+            <button data-reciprocal class="key-small">1/x</button>
+            <button data-constant="π" class="key-small">π</button>
+
+            <button data-memory="clear" class="key-small">MC</button>
+            <button data-memory="recall" class="key-small">MR</button>
+            <button data-memory="add" class="key-small">M+</button>
+            <button data-memory="subtract" class="key-small">M−</button>
+
+            <button data-open-paren class="key-small">(</button>
+            <button data-close-paren class="key-small">)</button>
+            <button data-all-clear class="key-action">AC</button>
+            <button data-delete class="key-action">DEL</button>
+
+            <button data-number="7">7</button>
+            <button data-number="8">8</button>
+            <button data-number="9">9</button>
+            <button data-operation="÷" class="key-operator">÷</button>
+
+            <button data-number="4">4</button>
+            <button data-number="5">5</button>
+            <button data-number="6">6</button>
+            <button data-operation="*" class="key-operator">*</button>
+
+            <button data-number="1">1</button>
+            <button data-number="2">2</button>
+            <button data-number="3">3</button>
+            <button data-operation="-" class="key-operator">-</button>
+
+            <button data-sign>±</button>
+            <button data-number="0">0</button>
+            <button data-number=".">.</button>
+            <button data-operation="+" class="key-operator">+</button>
+
+            <button data-operation="^" class="key-small">xⁿ</button>
+            <button data-percent>%</button>
+            <button data-equals class="key-equals span-two">=</button>
         </div>
-        <button data-all-clear class="span-two">AC</button>
-        <button data-delete>DEL</button>
-        <button data-operation>÷</button>
-        <button data-number>1</button>
-        <button data-number>2</button>
-        <button data-number>3</button>
-        <button data-operation>*</button>
-        <button data-number>4</button>
-        <button data-number>5</button>
-        <button data-number>6</button>
-        <button data-operation>+</button>
-        <button data-number>7</button>
-        <button data-number>8</button>
-        <button data-number>9</button>
-        <button data-operation>-</button>
-        <button data-number>.</button>
-        <button data-number>0</button>
-        <button data-equals class="span-two">=</button>
-    </div>
+
+        <aside class="panel">
+            <div class="tabs" role="tablist">
+                <button data-tab="history" class="tab is-active" role="tab" type="button"
+                    aria-selected="true">History</button>
+                <button data-tab="graph" class="tab" role="tab" type="button" aria-selected="false">ƒ(x)</button>
+            </div>
+
+            <section data-panel="history" class="panel-body">
+                <div class="panel-head">
+                    <span class="panel-title">Past calculations</span>
+                    <button data-history-clear class="link-button" type="button">Clear</button>
+                </div>
+                <p data-history-empty class="muted">Nothing yet.</p>
+                <ul data-history-list class="history-list"></ul>
+            </section>
+
+            <section data-panel="graph" class="panel-body" hidden>
+                <label class="field">
+                    <span class="field-label">ƒ(x) =</span>
+                    <input data-graph-input class="field-input" type="text" value="x^2-2"
+                        spellcheck="false" autocomplete="off">
+                </label>
+
+                <div class="range">
+                    <label class="field field-inline">
+                        <span class="field-label">x from</span>
+                        <input data-graph-min class="field-input" type="number" value="-10" step="1">
+                    </label>
+                    <label class="field field-inline">
+                        <span class="field-label">to</span>
+                        <input data-graph-max class="field-input" type="number" value="10" step="1">
+                    </label>
+                </div>
+
+                <div class="examples">
+                    <button data-graph-example="x^2-2" class="chip" type="button">x²−2</button>
+                    <button data-graph-example="sin(x)" class="chip" type="button">sin x</button>
+                    <button data-graph-example="1/x" class="chip" type="button">1/x</button>
+                    <button data-graph-example="sqrt(x)" class="chip" type="button">√x</button>
+                    <button data-graph-example="tan(x)" class="chip" type="button">tan x</button>
+                </div>
+
+                <div class="plot-wrap">
+                    <svg data-graph-svg class="plot" viewBox="0 0 280 200"
+                        preserveAspectRatio="none" role="img" aria-label="Plot of the function"></svg>
+                    <output data-graph-readout class="readout"></output>
+                </div>
+
+                <p data-graph-error class="error" role="alert" hidden></p>
+            </section>
+        </aside>
+    </main>
+
+    <p class="hint">
+        Keyboard: digits, <kbd>+</kbd> <kbd>-</kbd> <kbd>*</kbd> <kbd>/</kbd> <kbd>^</kbd>
+        <kbd>(</kbd> <kbd>)</kbd> <kbd>%</kbd>, <kbd>Enter</kbd> to equal,
+        <kbd>Backspace</kbd> to delete, <kbd>Esc</kbd> to clear.
+    </p>
 </body>
 
 </html>

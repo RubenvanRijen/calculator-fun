@@ -1,0 +1,15 @@
+{
+  /* Type-checks the TypeScript tests and the Vitest config, which the build
+     config excludes so that neither ends up in dist/. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "outDir": null,
+    "declaration": false,
+    "sourceMap": false,
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["ts/**/*.ts", "vitest.config.ts"],
+  "exclude": []
+}

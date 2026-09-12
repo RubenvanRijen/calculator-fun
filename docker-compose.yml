@@ -1,0 +1,28 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: prod
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./ts:/app/ts
+      - ./index.html:/app/index.html
+      - ./styles.css:/app/styles.css
+      - ./favicon.svg:/app/favicon.svg
+      - ./examples:/app/examples
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./vite.config.ts:/app/vite.config.ts
+      # Keep the container's node_modules; the host's are not in the image.
+      - /app/node_modules

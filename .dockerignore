@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+node_modules
+dist
+coverage
+*.tsbuildinfo
+docker-compose.yml
+.dockerignore
+README.md
+e2e
+playwright.config.ts
+test-results
+playwright-report

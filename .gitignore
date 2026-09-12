@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+
+# JetBrains
+.idea/
+
+# Playwright MCP scratch output
+.playwright-mcp/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+.playwright/
