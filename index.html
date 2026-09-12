@@ -31,6 +31,12 @@
                 <div data-error class="error" role="alert" hidden></div>
             </div>
 
+            <button data-action="ans" class="key-small"><span class="legend">Ans</span></button>
+            <button data-action="cursor-left" class="key-small" aria-label="Move left"><span class="legend">&#x25C0;</span></button>
+            <button data-action="cursor-right" class="key-small" aria-label="Move right"><span class="legend">&#x25B6;</span></button>
+            <button data-action="recall-previous" class="key-small" aria-label="Previous entry"><span class="legend">&#x25B2;</span></button>
+            <button data-action="recall-next" class="key-small" aria-label="Next entry"><span class="legend">&#x25BC;</span></button>
+
             <button data-action="second" class="key-second"><span class="legend">2nd</span></button>
             <button data-action="angle-mode" class="key-small"><span class="legend">mode</span></button>
             <button data-action="function" data-arg="sqrt" data-action-alt="function" data-arg-alt="abs" class="key-small"><span class="legend">√</span><span class="legend-alt">abs</span></button>
@@ -127,7 +133,8 @@
     <p class="hint">
         Keyboard: digits, <kbd>+</kbd> <kbd>-</kbd> <kbd>*</kbd> <kbd>/</kbd> <kbd>^</kbd>
         <kbd>(</kbd> <kbd>)</kbd> <kbd>%</kbd>, <kbd>Enter</kbd> to equal,
-        <kbd>Backspace</kbd> to undo a keypress, <kbd>Esc</kbd> to clear.
+        <kbd>Backspace</kbd> to undo a keypress, <kbd>Esc</kbd> to clear,
+        <kbd>&larr;</kbd><kbd>&rarr;</kbd> to move the caret, <kbd>&uarr;</kbd><kbd>&darr;</kbd> for past entries.
         <br>
         <kbd>2nd</kbd> reaches the alternate on keys that show one:
         sin/cos/tan&nbsp;&rarr;&nbsp;their inverses, log&nbsp;&rarr;&nbsp;10&#x02E3;,

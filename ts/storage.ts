@@ -40,6 +40,8 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
       memory?: number;
       theme?: Theme;
       angleMode?: AngleMode;
+      lastAnswer?: number | null;
+      entries?: string[];
     } = {};
 
     if (Array.isArray(record["history"])) {
@@ -57,6 +59,19 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
       record["angleMode"] === "grad"
     ) {
       state.angleMode = record["angleMode"];
+    }
+    if (record["lastAnswer"] === null) {
+      state.lastAnswer = null;
+    } else if (
+      typeof record["lastAnswer"] === "number" &&
+      Number.isFinite(record["lastAnswer"])
+    ) {
+      state.lastAnswer = record["lastAnswer"];
+    }
+    if (Array.isArray(record["entries"])) {
+      state.entries = record["entries"].filter(
+        (entry): entry is string => typeof entry === "string"
+      );
     }
     return state;
   } catch {

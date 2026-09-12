@@ -442,6 +442,25 @@ describe("setupCalculator", () => {
       expect(result()).toBe("-0.952412980415");
     });
 
+    // Focus stuck on any button made the keyboard guard swallow every Enter,
+    // so the calculator quietly stopped computing.
+    it.each([
+      [".history-entry", "a history entry"],
+      ["[data-theme-toggle]", "the theme toggle"],
+      ['[data-tab="graph"]', "a tab"],
+    ])("keeps Enter working after clicking %s", (selector) => {
+      press("1", "+", "1", "=");
+
+      const target = root.querySelector<HTMLElement>(selector);
+      target?.focus();
+      target?.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+      expect(document.activeElement).not.toBe(target);
+
+      press("AC");
+      type("2", "+", "3", "Enter");
+      expect(result()).toBe("5");
+    });
+
     it("leaves focus alone for keyboard activation", () => {
       const seven = button("7");
       seven.focus();
@@ -454,6 +473,91 @@ describe("setupCalculator", () => {
       handle.destroy();
       type("9");
       expect(expression()).toBe("");
+    });
+  });
+
+  describe("cursor, recall and Ans", () => {
+    const caret = () => root.querySelector("[data-caret]");
+
+    it("shows a caret in the expression line", () => {
+      press("1", "2");
+      expect(caret()).not.toBeNull();
+    });
+
+    it("keeps the expression readable around the caret", () => {
+      press("1", "2", "+", "3");
+      // The caret is an empty element, so textContent is unaffected.
+      expect(expression()).toBe("12 + 3");
+    });
+
+    it("drops the caret once a calculation is finished", () => {
+      press("1", "+", "1", "=");
+      expect(caret()).toBeNull();
+    });
+
+    it("moves the caret with the arrow keys", () => {
+      press("1", "3");
+      type("ArrowLeft");
+      type("2");
+      expect(expression()).toBe("123");
+    });
+
+    it("moves the caret with the on-screen arrows", () => {
+      press("1", "3");
+      keyFor("cursor-left").click();
+      press("2");
+      expect(expression()).toBe("123");
+    });
+
+    it("recalls a previous entry with ArrowUp", () => {
+      press("1", "+", "1", "=", "AC");
+      type("ArrowUp");
+      expect(expression()).toBe("1 + 1");
+    });
+
+    it("recalls with the on-screen arrows too", () => {
+      press("1", "+", "1", "=", "AC");
+      keyFor("recall-previous").click();
+      expect(expression()).toBe("1 + 1");
+      keyFor("recall-next").click();
+      expect(expression()).toBe("");
+    });
+
+    it("wires up the Ans key", () => {
+      press("5", "*", "7", "=");
+      keyFor("ans").click();
+      press("+", "1", "=");
+      expect(result()).toBe("36");
+    });
+
+    it("reports a missing answer rather than failing silently", () => {
+      keyFor("ans").click();
+      press("=");
+      expect(errorEl()?.textContent).toBe("No previous answer");
+    });
+
+    it("claims an arrow key only when it does something", () => {
+      press("1", "2");
+      const left = new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true });
+      document.dispatchEvent(left);
+      expect(left.defaultPrevented).toBe(true);
+    });
+
+    // Otherwise Up/Down stop scrolling the page on a narrow screen.
+    it("leaves an arrow key to the browser when it would do nothing", () => {
+      for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft"]) {
+        const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+        document.dispatchEvent(event);
+        expect(event.defaultPrevented, key).toBe(false);
+      }
+    });
+
+    it("leaves the arrow keys alone while the graph field has focus", () => {
+      press("1", "2");
+      root.querySelector<HTMLInputElement>("[data-graph-input]")?.focus();
+      type("ArrowLeft");
+      type("9");
+      expect(expression()).toBe("12");
     });
   });
 
@@ -580,6 +684,32 @@ describe("setupCalculator", () => {
 
       expect(entries()).toHaveLength(1);
       expect(memoryEl()?.hidden).toBe(false);
+    });
+
+    it("keeps Ans working after a reload", () => {
+      press("5", "*", "7", "=");
+      handle.destroy();
+
+      document.body.innerHTML = MARKUP;
+      root = document.body;
+      handle = setupCalculator(root);
+
+      // The history panel showed the result while Ans denied having one.
+      keyFor("ans").click();
+      press("+", "1", "=");
+      expect(result()).toBe("36");
+    });
+
+    it("keeps the recall arrows working after a reload", () => {
+      press("1", "2", "*", "2", "=");
+      handle.destroy();
+
+      document.body.innerHTML = MARKUP;
+      root = document.body;
+      handle = setupCalculator(root);
+
+      keyFor("recall-previous").click();
+      expect(expression()).toBe("12 * 2");
     });
 
     it("restores the chosen theme", () => {

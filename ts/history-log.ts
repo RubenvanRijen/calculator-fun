@@ -12,6 +12,11 @@ export class HistoryLog {
   }
 
   add(expression: string, result: string): void {
+    // Re-running the same sum should not stack identical rows; the recall list
+    // behaves the same way.
+    const newest = this.#entries[0];
+    if (newest?.expression === expression && newest.result === result) return;
+
     this.#entries.unshift({ expression, result });
     if (this.#entries.length > MAX_HISTORY) this.#entries.length = MAX_HISTORY;
   }

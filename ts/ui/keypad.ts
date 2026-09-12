@@ -77,6 +77,11 @@ export class Keypad {
       "angle-mode": () => {
         calculator.angleMode = nextAngleMode(calculator.angleMode);
       },
+      ans: () => calculator.appendAns(),
+      "cursor-left": () => calculator.moveLeft(),
+      "cursor-right": () => calculator.moveRight(),
+      "recall-previous": () => calculator.recallPrevious(),
+      "recall-next": () => calculator.recallNext(),
       second: () => this.#setShift(!this.#shifted),
     };
 
@@ -167,6 +172,12 @@ export class Keypad {
       case "%": calculator.percent(); return "%";
       case "(": calculator.openParen(); return "(";
       case ")": calculator.closeParen(); return ")";
+      // The arrows return null when they did nothing, so the keypress is left
+      // to the browser and the page can still be scrolled with the keyboard.
+      case "ArrowLeft": return calculator.moveLeft() ? "\u25c0" : null;
+      case "ArrowRight": return calculator.moveRight() ? "\u25b6" : null;
+      case "ArrowUp": return calculator.recallPrevious() ? "\u25b2" : null;
+      case "ArrowDown": return calculator.recallNext() ? "\u25bc" : null;
       default: return null;
     }
   }

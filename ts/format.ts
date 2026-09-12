@@ -24,18 +24,51 @@ export function expectsOperand(text: string): boolean {
   return OPERATOR_CHARACTERS.includes(last);
 }
 
-/** Space out binary operators so "12+3*4" reads as "12 + 3 * 4". */
-export function formatExpression(expression: string): string {
+/**
+ * Space out binary operators so "12+3*4" reads as "12 + 3 * 4", and report
+ * where a cursor in the raw text lands in the spaced text. The caret has to be
+ * placed in the formatted string, so the two have to be worked out together
+ * rather than re-derived from each other.
+ */
+export function formatExpressionWithCursor(
+  expression: string,
+  cursor: number
+): { text: string; cursor: number } {
   let out = "";
-  for (let index = 0; index < expression.length; index += 1) {
+  let mapped = 0;
+
+  for (let index = 0; index <= expression.length; index += 1) {
+    // Checked before writing, so the caret lands before any space inserted
+    // ahead of an operator: "12| + 3" rather than "12 |+ 3".
+    if (index === cursor) mapped = out.length;
+    if (index === expression.length) break;
+
     const character = expression[index] ?? "";
     if ("+-*÷^".includes(character) && !expectsOperand(expression.slice(0, index))) {
-      out += ` ${character} `;
+      if (out !== "" && !out.endsWith(" ")) out += " ";
+      out += `${character} `;
     } else {
       out += character;
     }
   }
-  return out.replace(/\s+/g, " ").trim();
+
+  const text = out.trimEnd();
+  return { text, cursor: Math.min(mapped, text.length) };
+}
+
+/** Close any parentheses left open, so "sqrt(9" still evaluates. */
+export function balanceParentheses(text: string): string {
+  let depth = 0;
+  for (const character of text) {
+    if (character === "(") depth += 1;
+    else if (character === ")") depth -= 1;
+  }
+  return depth > 0 ? text + ")".repeat(depth) : text;
+}
+
+/** Space out binary operators so "12+3*4" reads as "12 + 3 * 4". */
+export function formatExpression(expression: string): string {
+  return formatExpressionWithCursor(expression, expression.length).text;
 }
 
 /**

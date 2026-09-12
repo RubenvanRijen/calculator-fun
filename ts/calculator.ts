@@ -3,8 +3,10 @@ import { ExpressionBuffer } from "./expression-buffer.js";
 import { HistoryLog } from "./history-log.js";
 import { MemoryRegister } from "./memory-register.js";
 import {
+  balanceParentheses,
   expectsOperand,
   formatExpression,
+  formatExpressionWithCursor,
   formatOperand,
   roundResult,
   trailingOperation,
@@ -12,6 +14,9 @@ import {
 import type { Operation } from "./types/operation.js";
 import type { HistoryEntry } from "./interfaces/history-entry.js";
 import type { AngleMode } from "./types/angle-mode.js";
+
+/** How many past expressions the up/down arrows can walk back through. */
+const MAX_ENTRIES = 50;
 
 /**
  * The calculator, as a facade over four collaborators: the expression being
@@ -36,6 +41,15 @@ export class Calculator {
   #justComputed = false;
   /** The trailing "+3" of the last sum, so "=" can be pressed again. */
   #repeatTail: string | null = null;
+  /**
+   * The last computed value, kept apart from #result because it has to outlive
+   * AC: on the hardware Ans survives a clear the way memory does.
+   */
+  #lastAnswer: number | null = null;
+  /** Expressions that were computed, oldest first, for up/down recall. */
+  #entries: string[] = [];
+  /** Where in #entries the user is; equal to its length when not browsing. */
+  #entryIndex = 0;
 
   /** The expression as typed, e.g. "12+3*4". */
   get expression(): string {
@@ -80,15 +94,82 @@ export class Calculator {
     return this.#buffer.openDepth;
   }
 
-  /** Restore history and memory from a previous visit. */
-  restore(history: readonly HistoryEntry[], memory: number): void {
-    this.#history.restore(history);
-    this.#memory.value = memory;
+  /** Where the caret sits within `expression`. */
+  get cursor(): number {
+    return this.#buffer.cursor;
   }
 
-  /** Reset the current entry. Memory and history deliberately survive. */
+  /** Move the caret one character left. Returns false when it could not. */
+  moveLeft(): boolean {
+    this.error = null;
+    this.#settleAfterCompute();
+    return this.#buffer.moveLeft();
+  }
+
+  /** Move the caret one character right. Returns false when it could not. */
+  moveRight(): boolean {
+    this.error = null;
+    this.#settleAfterCompute();
+    return this.#buffer.moveRight();
+  }
+
+  /** Step back through previously computed expressions. */
+  recallPrevious(): boolean {
+    if (this.#entries.length === 0) return false;
+    this.error = null;
+    this.#entryIndex = Math.max(0, this.#entryIndex - 1);
+    this.#loadEntry();
+    return true;
+  }
+
+  /** Step forward again; past the newest entry the expression is cleared. */
+  recallNext(): boolean {
+    if (this.#entries.length === 0) return false;
+    this.error = null;
+    this.#entryIndex = Math.min(this.#entries.length, this.#entryIndex + 1);
+    this.#loadEntry();
+    return true;
+  }
+
+  /** Insert a reference to the previous result. */
+  appendAns(): void {
+    this.#beginFreshEntry();
+    this.#buffer.push("ans");
+    this.#refreshPreview();
+  }
+
+  /**
+   * Bring back what a previous visit left. Taken as one object rather than a
+   * growing list of positional arguments, and so that a caller cannot restore
+   * the history while silently dropping the answer it refers to.
+   */
+  restore(state: {
+    history?: readonly HistoryEntry[] | undefined;
+    memory?: number | undefined;
+    lastAnswer?: number | null | undefined;
+    entries?: readonly string[] | undefined;
+  }): void {
+    this.#history.restore(state.history ?? []);
+    this.#memory.value = state.memory ?? 0;
+    this.#lastAnswer = state.lastAnswer ?? null;
+    this.#entries = [...(state.entries ?? [])].slice(-MAX_ENTRIES);
+    this.#entryIndex = this.#entries.length;
+  }
+
+  /** The value Ans refers to, for persistence. */
+  get lastAnswer(): number | null {
+    return this.#lastAnswer;
+  }
+
+  /** The expressions the arrows walk through, for persistence. */
+  get entries(): readonly string[] {
+    return this.#entries;
+  }
+
+  /** Reset the current entry. Memory, history and recall deliberately survive. */
   clear(): void {
     this.#buffer.clear();
+    this.#entryIndex = this.#entries.length;
     this.error = null;
     this.#result = null;
     this.#preview = "";
@@ -111,7 +192,13 @@ export class Calculator {
   appendNumber(digit: string): void {
     this.#beginFreshEntry();
     // Only one decimal point per number.
-    if (digit === "." && /[0-9.]*\.[0-9]*$/.test(this.#buffer.text)) return;
+    // The rule is one point per *number*, so it has to see the digits on both
+    // sides of the caret: with "1|.5" there is already a point in this number.
+    // The raw run, because "5." is exactly the case this has to catch and it
+    // is not yet a number.
+    if (digit === "." && (this.#buffer.numberRunAtCursor?.literal ?? "").includes(".")) {
+      return;
+    }
     this.#buffer.push(digit);
     this.#refreshPreview();
   }
@@ -124,7 +211,8 @@ export class Calculator {
    */
   insert(text: string): void {
     this.#beginFreshEntry();
-    const needsProduct = /^[0-9]/.test(text) && /[0-9.)π]$/.test(this.#buffer.text);
+    const needsProduct =
+      /^[0-9]/.test(text) && /[0-9.)π]$/.test(this.#buffer.textBeforeCursor);
     this.#buffer.push(needsProduct ? `*${text}` : text);
     this.#refreshPreview();
   }
@@ -152,7 +240,12 @@ export class Calculator {
 
     // A trailing "(" has nothing to operate on, so "(" then "+" would leave
     // "(+", which can never evaluate.
-    if (this.#buffer.isEmpty || this.#buffer.text.endsWith("(")) return;
+    if (
+      this.#buffer.isEmptyBeforeCursor ||
+      this.#buffer.textBeforeCursor.endsWith("(")
+    ) {
+      return;
+    }
 
     // Replace a trailing operator rather than stacking two.
     if (this.#buffer.endsWithOperator) this.#buffer.pop();
@@ -170,7 +263,16 @@ export class Calculator {
   /** Close a parenthesis, if there is one open to close. */
   closeParen(): void {
     this.error = null;
-    if (this.#buffer.openDepth === 0 || this.#buffer.expectsOperand) return;
+    // Both counts matter: there has to be a "(" before the caret to close, and
+    // the expression as a whole has to have one still unclosed -- otherwise a
+    // ")" typed mid-expression closes a bracket that is already matched.
+    if (
+      this.#buffer.openDepthBeforeCursor === 0 ||
+      this.#buffer.openDepth === 0 ||
+      this.#buffer.expectsOperand
+    ) {
+      return;
+    }
     this.#buffer.push(")");
     this.#refreshPreview();
   }
@@ -198,16 +300,19 @@ export class Calculator {
     this.error = null;
     this.#continueFromResult();
 
-    const trailing = this.#buffer.trailingLiteral;
-    if (trailing === null) return;
+    const number = this.#buffer.numberAtCursor;
+    if (number === null) return;
 
-    const { literal, before } = trailing;
+    const { literal, start, end } = number;
+    const before = this.#buffer.text.slice(0, start);
     const isAlreadyNegated =
       before.endsWith("-") && expectsOperand(before.slice(0, -1));
 
-    this.#buffer.replace(
-      isAlreadyNegated ? before.slice(0, -1) + literal : `${before}-${literal}`
-    );
+    if (isAlreadyNegated) {
+      this.#buffer.replaceRange(start - 1, end, literal);
+    } else {
+      this.#buffer.replaceRange(start, end, `-${literal}`);
+    }
     this.#refreshPreview();
   }
 
@@ -220,22 +325,23 @@ export class Calculator {
     this.error = null;
     this.#continueFromResult();
 
-    const trailing = this.#buffer.trailingLiteral;
-    if (trailing === null) return;
+    const number = this.#buffer.numberAtCursor;
+    if (number === null) return;
 
-    const { literal, before } = trailing;
+    const { literal, start, end } = number;
+    const before = this.#buffer.text.slice(0, start);
     const operator = before[before.length - 1] ?? "";
 
     if ((operator === "+" || operator === "-") && before.length > 1) {
       const base = this.#tryEvaluate(before.slice(0, -1));
       if (base !== null) {
-        this.#buffer.replace(`${before}(${base}*${literal}/100)`);
+        this.#buffer.replaceRange(start, end, `(${base}*${literal}/100)`);
         this.#refreshPreview();
         return;
       }
     }
 
-    this.#buffer.replace(`${before}(${literal}/100)`);
+    this.#buffer.replaceRange(start, end, `(${literal}/100)`);
     this.#refreshPreview();
   }
 
@@ -265,9 +371,11 @@ export class Calculator {
     this.#memory.clear();
   }
 
-  /** Empty the history panel. */
+  /** Empty the history panel, and the entries the arrows walk through. */
   clearHistory(): void {
     this.#history.clear();
+    this.#entries = [];
+    this.#entryIndex = 0;
   }
 
   /**
@@ -279,7 +387,11 @@ export class Calculator {
 
     if (this.#justComputed) {
       if (this.#repeatTail === null || this.#result === null) return;
-      this.#buffer.replace(this.#result + this.#repeatTail);
+      const carried =
+        this.#repeatTail.startsWith("^") && this.#result.startsWith("-")
+          ? `(${this.#result})`
+          : this.#result;
+      this.#buffer.replace(carried + this.#repeatTail);
     }
 
     const expression = this.#buffer.balanced;
@@ -287,7 +399,10 @@ export class Calculator {
 
     let value: number;
     try {
-      value = evaluateString(expression, { angleMode: this.#angleMode });
+      value = evaluateString(expression, {
+        angleMode: this.#angleMode,
+        ans: this.#previousAnswer(),
+      });
     } catch (cause) {
       this.error = cause instanceof Error ? cause.message : "Invalid expression";
       return;
@@ -302,16 +417,35 @@ export class Calculator {
     this.#repeatTail = trailingOperation(expression);
     this.#history.add(formatExpression(expression), result);
 
+    // Keep the entry list free of consecutive duplicates, so pressing = twice
+    // does not fill it with the same line.
+    if (this.#entries[this.#entries.length - 1] !== expression) {
+      this.#entries.push(expression);
+      if (this.#entries.length > MAX_ENTRIES) this.#entries.shift();
+    }
+    this.#entryIndex = this.#entries.length;
+
     this.#buffer.replace(expression);
     this.#result = result;
+    this.#lastAnswer = roundResult(value);
     this.#preview = result;
     this.#justComputed = true;
   }
 
   /** The expression as it should appear on the small upper line. */
   get expressionDisplay(): string {
-    const formatted = formatExpression(this.#buffer.text);
-    return this.#justComputed ? `${formatted} =` : formatted;
+    const { text } = formatExpressionWithCursor(this.#buffer.text, this.#buffer.cursor);
+    return this.#justComputed ? `${text} =` : text;
+  }
+
+  /**
+   * Where the caret goes within `expressionDisplay`, or null when there should
+   * not be one -- a finished calculation is a result, not something being
+   * edited.
+   */
+  get displayCursor(): number | null {
+    if (this.#justComputed) return null;
+    return formatExpressionWithCursor(this.#buffer.text, this.#buffer.cursor).cursor;
   }
 
   /** The large lower line: the result, or a live preview while typing. */
@@ -329,18 +463,30 @@ export class Calculator {
     }
   }
 
-  /** Carry the last result into the expression, for keys that build on it. */
-  #continueFromResult(): void {
-    if (this.#justComputed && this.#result !== null) {
-      this.#buffer.replace(this.#result);
-      this.#justComputed = false;
-    }
+  /**
+   * Carry the last result into the expression, for keys that build on it.
+   * `bracketNegative` is for keys that append something binding tighter than
+   * unary minus: -7 then x^2 must be (-7)^2 = 49, not -(7^2) = -49.
+   */
+  #continueFromResult(bracketNegative = false): void {
+    if (!this.#justComputed || this.#result === null) return;
+    const carried =
+      bracketNegative && this.#result.startsWith("-")
+        ? `(${this.#result})`
+        : this.#result;
+    this.#buffer.replace(carried);
+    this.#justComputed = false;
   }
 
   #appendPower(exponent: string): void {
     this.error = null;
-    this.#continueFromResult();
-    if (this.#buffer.isEmpty || this.#buffer.endsWithOperator) return;
+    this.#continueFromResult(true);
+    // A power applies to the whole number the caret is in, not to the digits
+    // that happen to precede it: "1|2+3" then x^2 is 12^2, not 1^22.
+    const number = this.#buffer.numberAtCursor;
+    if (number !== null) this.#buffer.moveTo(number.end);
+
+    if (this.#buffer.isEmptyBeforeCursor || this.#buffer.endsWithOperator) return;
     this.#buffer.push(`^${exponent}`);
     this.#refreshPreview();
   }
@@ -357,7 +503,9 @@ export class Calculator {
       return;
     }
     const whole = this.#buffer.balanced;
-    const withoutTail = whole.replace(/[+\-*÷^]+$/, "");
+    const withoutTail = balanceParentheses(
+      this.#buffer.text.replace(/[+\-*÷^]+$/, "")
+    );
     for (const candidate of [whole, withoutTail]) {
       const value = this.#tryEvaluate(candidate);
       if (value !== null) {
@@ -371,11 +519,36 @@ export class Calculator {
   #tryEvaluate(expression: string): string | null {
     if (expression === "") return null;
     try {
-      const value = evaluateString(expression, { angleMode: this.#angleMode });
+      const value = evaluateString(expression, {
+        angleMode: this.#angleMode,
+        ans: this.#previousAnswer(),
+      });
       return Number.isFinite(value) ? roundResult(value).toString() : null;
     } catch {
       return null;
     }
+  }
+
+  /** Load whichever entry #entryIndex points at; past the end, clear. */
+  #loadEntry(): void {
+    const entry = this.#entries[this.#entryIndex];
+    if (entry === undefined) {
+      this.#buffer.clear();
+    } else {
+      this.#buffer.replace(entry);
+    }
+    this.#justComputed = false;
+    this.#refreshPreview();
+  }
+
+  /** What Ans resolves to, or undefined before anything has been computed. */
+  #previousAnswer(): number | undefined {
+    return this.#lastAnswer ?? undefined;
+  }
+
+  /** After "=", the next edit continues from the balanced expression. */
+  #settleAfterCompute(): void {
+    if (this.#justComputed) this.#justComputed = false;
   }
 
   /** The number the memory keys act on: the preview, or the result. */
@@ -388,4 +561,9 @@ export class Calculator {
 }
 
 /** Re-exported so existing importers keep working. */
-export { formatExpression, formatOperand, trailingOperation } from "./format.js";
+export {
+  formatExpression,
+  formatExpressionWithCursor,
+  formatOperand,
+  trailingOperation,
+} from "./format.js";

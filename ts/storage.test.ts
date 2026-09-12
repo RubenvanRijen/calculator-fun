@@ -36,14 +36,32 @@ describe("storage", () => {
 
   it("round-trips state", () => {
     saveState(
-      { history: [{ expression: "1 + 1", result: "2" }], memory: 7, theme: "dark" },
+      {
+        history: [{ expression: "1 + 1", result: "2" }],
+        memory: 7,
+        theme: "dark",
+        angleMode: "deg",
+        lastAnswer: 35,
+        entries: ["1+1"],
+      },
       storage
     );
     expect(loadState(storage)).toEqual({
       history: [{ expression: "1 + 1", result: "2" }],
       memory: 7,
       theme: "dark",
+      angleMode: "deg",
+      lastAnswer: 35,
+      entries: ["1+1"],
     });
+  });
+
+  it("round-trips a null last answer", () => {
+    saveState(
+      { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [] },
+      storage
+    );
+    expect(loadState(storage).lastAnswer).toBeNull();
   });
 
   it("returns nothing when there is nothing saved", () => {
@@ -51,7 +69,10 @@ describe("storage", () => {
   });
 
   it("clears", () => {
-    saveState({ history: [], memory: 1, theme: "light" }, storage);
+    saveState(
+      { history: [], memory: 1, theme: "light", angleMode: "rad", lastAnswer: null, entries: [] },
+      storage
+    );
     clearState(storage);
     expect(loadState(storage)).toEqual({});
   });
@@ -85,6 +106,17 @@ describe("storage", () => {
       const raw = JSON.stringify({ theme: "neon" });
       expect(loadState(memoryStorage({ "calculator-fun.state": raw })).theme).toBeUndefined();
     });
+
+    it("ignores a non-numeric last answer", () => {
+      const raw = JSON.stringify({ lastAnswer: "lots" });
+      expect(loadState(memoryStorage({ "calculator-fun.state": raw })).lastAnswer).toBeUndefined();
+    });
+
+    it("drops non-string entries", () => {
+      const raw = JSON.stringify({ entries: ["1+1", 42, null, "2*2"] });
+      expect(loadState(memoryStorage({ "calculator-fun.state": raw })).entries)
+        .toEqual(["1+1", "2*2"]);
+    });
   });
 
   describe("when storage is unavailable", () => {
@@ -95,7 +127,10 @@ describe("storage", () => {
 
     it("saves without throwing", () => {
       expect(() =>
-        saveState({ history: [], memory: 0, theme: "light" }, hostileStorage())
+        saveState(
+          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [] },
+          hostileStorage()
+        )
       ).not.toThrow();
     });
 
@@ -105,7 +140,12 @@ describe("storage", () => {
 
     it("treats a null storage as absent", () => {
       expect(loadState(null)).toEqual({});
-      expect(() => saveState({ history: [], memory: 0, theme: "light" }, null)).not.toThrow();
+      expect(() =>
+        saveState(
+          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [] },
+          null
+        )
+      ).not.toThrow();
     });
   });
 });

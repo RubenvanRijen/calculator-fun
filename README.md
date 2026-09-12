@@ -86,6 +86,8 @@ saved state" rather than breaking.
 | `^` | power |
 | `(` `)` | parentheses |
 | `%` | percent |
+| `←` `→` | move the caret |
+| `↑` `↓` | walk back and forward through past entries |
 | `Enter` or `=` | compute |
 | `Backspace` | undo the last keypress |
 | `Escape` | clear |
@@ -96,6 +98,18 @@ keeps handling its own `Enter`, so nothing fires twice.
 **Percent** behaves like a physical calculator: inside a pending `+` or `-` it
 reads as "percent of the first operand", so `50 + 10 %` is `55`, not `50.1`.
 Inside `*` or `÷` there is no sensible base, so it is a plain division by 100.
+
+**Editing.** A caret sits in the expression line and `←`/`→` move it, so a
+typo in the middle is one keystroke to fix rather than a retype. `↑`/`↓` walk
+through previously computed expressions, which can then be edited and run
+again. The same four moves have keys of their own for touch.
+
+`DEL` undoes one *keypress* while the caret is at the end -- so the `√` key
+takes one press to undo, not five. Once the caret has been moved, editing is
+character-wise, as in any text field.
+
+**`Ans`** inserts the previous result, so a long calculation can be carried
+forward: `5 × 7 =` then `Ans + 1 =` gives 36.
 
 **Scientific keys**: `√`, `x²`, `1/x`, `xⁿ`, `π`, `sin`, `cos`, `tan`, `log`,
 `ln`, plus `±` to flip a sign.

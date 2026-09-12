@@ -10,4 +10,5 @@ export type Token =
   | { readonly kind: TokenKind.Function; readonly name: FunctionName }
   | { readonly kind: TokenKind.LeftParen }
   | { readonly kind: TokenKind.RightParen }
-  | { readonly kind: TokenKind.Variable };
+  | { readonly kind: TokenKind.Variable }
+  | { readonly kind: TokenKind.Ans };

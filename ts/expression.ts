@@ -77,6 +77,7 @@ const KNOWN_NAMES: readonly string[] = [
   ...FUNCTION_NAMES,
   ...Object.keys(CONSTANTS),
   "x",
+  "ans",
 ].sort((a, b) => b.length - a.length);
 
 /** Narrow an arbitrary string to one of the supported operations. */
@@ -141,6 +142,7 @@ export function tokenize(input: string): Token[] {
     if (
       last.kind === TokenKind.Number ||
       last.kind === TokenKind.Variable ||
+      last.kind === TokenKind.Ans ||
       last.kind === TokenKind.RightParen
     ) {
       tokens.push({ kind: TokenKind.Operator, operator: "*" });
@@ -249,6 +251,10 @@ export function tokenize(input: string): Token[] {
           tokens.push({ kind: TokenKind.Variable });
           continue;
         }
+        if (name === "ans") {
+          tokens.push({ kind: TokenKind.Ans });
+          continue;
+        }
         const constant = CONSTANTS[name];
         // KNOWN_NAMES is built from these three sources, so this is
         // unreachable -- but a throw beats silently evaluating to zero.
@@ -287,6 +293,7 @@ export function toRpn(tokens: readonly Token[]): Token[] {
     switch (token.kind) {
       case TokenKind.Number:
       case TokenKind.Variable:
+      case TokenKind.Ans:
         output.push(token);
         break;
 
@@ -360,6 +367,7 @@ export function toRpn(tokens: readonly Token[]): Token[] {
 export function evaluateRpn(rpn: readonly Token[], context: EvalContext = {}): number {
   const angleMode = context.angleMode ?? "rad";
   const x = context.x;
+  const ans = context.ans;
   const stack: number[] = [];
 
   const pop = (): number => {
@@ -377,6 +385,11 @@ export function evaluateRpn(rpn: readonly Token[], context: EvalContext = {}): n
       case TokenKind.Variable:
         if (x === undefined) throw new Error("Unknown name \"x\"");
         stack.push(x);
+        break;
+
+      case TokenKind.Ans:
+        if (ans === undefined) throw new Error("No previous answer");
+        stack.push(ans);
         break;
 
       case TokenKind.UnaryMinus:

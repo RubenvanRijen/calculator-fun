@@ -10,4 +10,6 @@ export interface EvalContext {
   readonly angleMode?: AngleMode | undefined;
   /** The free variable, supplied per sample by the grapher. */
   readonly x?: number | undefined;
+  /** What the Ans token resolves to: the previous result, if there is one. */
+  readonly ans?: number | undefined;
 }

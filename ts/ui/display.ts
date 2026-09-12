@@ -36,7 +36,7 @@ export class Display {
   }
 
   render(calculator: Calculator): void {
-    this.#expression.textContent = calculator.expressionDisplay;
+    this.#renderExpression(calculator);
     this.#result.textContent = calculator.resultDisplay;
 
     if (this.#error) {
@@ -54,5 +54,31 @@ export class Display {
       this.#paren.hidden = open === 0;
       this.#paren.textContent = `( ${open}`;
     }
+  }
+
+  /**
+   * The caret is an empty element between two text nodes, so the element's
+   * textContent stays exactly the expression -- nothing reading the display
+   * has to know the caret is there.
+   */
+  #renderExpression(calculator: Calculator): void {
+    const text = calculator.expressionDisplay;
+    const at = calculator.displayCursor;
+
+    if (at === null) {
+      this.#expression.textContent = text;
+      return;
+    }
+
+    const doc = this.#expression.ownerDocument;
+    const caret = doc.createElement("span");
+    caret.className = "caret";
+    caret.setAttribute("data-caret", "");
+
+    this.#expression.replaceChildren(
+      doc.createTextNode(text.slice(0, at)),
+      caret,
+      doc.createTextNode(text.slice(at))
+    );
   }
 }

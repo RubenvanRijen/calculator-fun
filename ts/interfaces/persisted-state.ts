@@ -8,4 +8,8 @@ export interface PersistedState {
   readonly memory: number;
   readonly theme: Theme;
   readonly angleMode: AngleMode;
+  /** What Ans refers to, so the key still works after a reload. */
+  readonly lastAnswer: number | null;
+  /** Expressions the up/down arrows walk through. */
+  readonly entries: readonly string[];
 }

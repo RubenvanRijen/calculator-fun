@@ -195,6 +195,56 @@ test.describe("trigonometry and angle modes", () => {
   });
 });
 
+test.describe("cursor, recall and Ans", () => {
+  test("shows a blinking caret while typing", async ({ page }) => {
+    await press(page, "1", "2");
+    await expect(page.locator("[data-caret]")).toBeAttached();
+    await press(page, "+", "1", "=");
+    await expect(page.locator("[data-caret]")).toHaveCount(0);
+  });
+
+  test("fixes a typo in the middle with the arrow keys", async ({ page }) => {
+    await page.keyboard.type("1+99");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.type("1");
+    await expect(expression(page)).toHaveText("1 + 19");
+    await page.keyboard.press("Enter");
+    await expect(result(page)).toHaveText("20");
+  });
+
+  test("moves the caret with the on-screen arrows", async ({ page }) => {
+    await press(page, "1", "3");
+    await page.locator('[data-action="cursor-left"]').click();
+    await press(page, "2");
+    await expect(expression(page)).toHaveText("123");
+  });
+
+  test("recalls a previous entry with the up arrow", async ({ page }) => {
+    await page.keyboard.type("12*12");
+    await page.keyboard.press("Enter");
+    await expect(result(page)).toHaveText("144");
+    await page.keyboard.press("Escape");
+
+    await page.keyboard.press("ArrowUp");
+    await expect(expression(page)).toHaveText("12 * 12");
+    await page.keyboard.press("Enter");
+    await expect(result(page)).toHaveText("144");
+  });
+
+  test("Ans carries the last result forward", async ({ page }) => {
+    await press(page, "5", "*", "7", "=");
+    await expect(result(page)).toHaveText("35");
+    await press(page, "Ans", "+", "1", "=");
+    await expect(result(page)).toHaveText("36");
+  });
+
+  test("says so when there is no previous answer", async ({ page }) => {
+    await press(page, "Ans", "=");
+    await expect(page.locator("[data-error]")).toHaveText("No previous answer");
+  });
+});
+
 test.describe("keyboard", () => {
   test("drives the whole calculator", async ({ page }) => {
     await page.keyboard.type("12+3*4");

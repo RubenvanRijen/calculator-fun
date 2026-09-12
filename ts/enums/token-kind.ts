@@ -9,4 +9,6 @@ export enum TokenKind {
   RightParen = "right-paren",
   /** The free variable, used by the grapher. */
   Variable = "variable",
+  /** The previous result, as the Ans key inserts it. */
+  Ans = "ans",
 }

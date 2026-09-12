@@ -29,7 +29,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
 
   // --- persistence and theme ----------------------------------------------
   const saved = loadState();
-  calculator.restore(saved.history ?? [], saved.memory ?? 0);
+  calculator.restore(saved);
   calculator.angleMode = saved.angleMode ?? "rad";
 
   let theme: Theme = saved.theme ?? preferredTheme();
@@ -46,6 +46,8 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
       memory: calculator.memory,
       theme,
       angleMode: calculator.angleMode,
+      lastAnswer: calculator.lastAnswer,
+      entries: calculator.entries,
     });
   };
 
@@ -71,6 +73,17 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   root.addEventListener(
     "click",
     (event) => {
+      // A pointer click leaves focus on whatever button it hit. The keypad
+      // clears that for its own keys; without the same treatment here, a click
+      // on a history entry, a tab or the theme toggle leaves a button focused
+      // and the keyboard handler then hands every Enter to it -- so Enter
+      // silently stops computing.
+      if (event instanceof MouseEvent && event.detail > 0) {
+        const button =
+          event.target instanceof Element ? event.target.closest("button") : null;
+        button?.blur();
+      }
+
       const inKeypad =
         event.target instanceof Element && event.target.closest("[data-keypad]") !== null;
       if (inKeypad) return;
