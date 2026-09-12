@@ -110,21 +110,26 @@ export function setupStatsPanel(
   }
 
   /**
-   * The line, or why there isn't one.
+   * Why the rows do not make a line.
    *
    * The two reasons are different things to fix: not enough complete rows, or
    * enough rows that all sit above the same x. Telling someone with five rows
-   * that a line needs two rows would send them looking for the wrong problem.
+   * that a line needs two rows would send them looking for the wrong problem
+   * -- which is what pressing plot used to do, however carefully the line
+   * above the editor had just said otherwise.
    */
+  function whyNoFit(pairs: number): string {
+    return pairs < 2
+      ? "A line needs two rows with both values."
+      : "Every x is the same, so there is no line to fit.";
+  }
+
+  /** The line, or why there isn't one. */
   function fitText(): string {
     const points = lists.pairs();
     const fit = regress(points.map((point) => point.x), points.map((point) => point.y));
 
-    if (fit === null) {
-      return points.length < 2
-        ? "A line needs two rows with both values."
-        : "Every x is the same, so there is no line to fit.";
-    }
+    if (fit === null) return whyNoFit(points.length);
 
     const sign = fit.intercept < 0 ? "−" : "+";
     const line = `y = ${figure(fit.slope)}x ${sign} ${figure(Math.abs(fit.intercept))}`;
@@ -191,7 +196,7 @@ export function setupStatsPanel(
     else if (action === "plot") {
       const fit = fitExpression();
       if (fit === null) {
-        if (fitLine) fitLine.textContent = "Nothing to plot: a line needs two rows with both values.";
+        if (fitLine) fitLine.textContent = `Nothing to plot. ${whyNoFit(lists.pairs().length)}`;
         return;
       }
       onPlot(fit);

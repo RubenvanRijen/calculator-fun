@@ -1367,6 +1367,31 @@ describe("setupCalculator", () => {
       expect(fit()).toContain("Every x is the same");
     });
 
+    it("says which reason it cannot plot, not just the first one", () => {
+      // Three complete rows all above the same x. The line above the editor
+      // says so correctly; pressing plot used to replace that with "needs two
+      // rows", which is the wrong problem and is exactly what the comment on
+      // whyNoFit was written to prevent.
+      [0, 1, 2].forEach((row) => {
+        type("L1", row, "3");
+        type("L2", row, String(row + 1));
+      });
+      expect(fit()).toContain("Every x is the same");
+
+      act("plot");
+      expect(fit()).toContain("Nothing to plot");
+      expect(fit()).toContain("Every x is the same");
+      expect(fit()).not.toContain("needs two rows");
+    });
+
+    it("still says so when there are simply too few rows to plot", () => {
+      type("L1", 0, "1");
+      type("L2", 0, "2");
+      act("plot");
+      expect(fit()).toContain("Nothing to plot");
+      expect(fit()).toContain("needs two rows");
+    });
+
     it("refuses to plot what has no line", () => {
       act("plot");
       expect(fit()).toContain("Nothing to plot");
@@ -1692,6 +1717,18 @@ describe("setupCalculator", () => {
       expect(cells(0)?.[0]).toBe("100000");
       expect(cells(1)?.[0]).toBe("100000.001");
       expect(cells(2)?.[0]).toBe("100000.002");
+    });
+
+    it("counts down when a tiny step is negative", () => {
+      const step = root.querySelector<HTMLInputElement>("[data-table-step]");
+      // Below the floor and negative. Taking the magnitude and putting back a
+      // positive floor turned this into +1e-9, so a table asked to count down
+      // counted up.
+      if (step) step.value = "-1e-12";
+      step?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      expect(cells(1)?.[0]).toBe("-1e-9");
+      expect(cells(2)?.[0]).toBe("-2e-9");
     });
 
     it("keeps a tiny step tiny instead of jumping it to 1", () => {

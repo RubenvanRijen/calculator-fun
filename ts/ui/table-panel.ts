@@ -99,7 +99,12 @@ export function setupTablePanel(
     // A step of zero prints one row forever. Anything else the user typed is
     // kept, however small: a tiny step is how a limit gets inspected, and
     // replacing it with 1 would answer a different question in silence.
-    const step = Math.abs(rawStep) < MIN_STEP ? MIN_STEP : rawStep;
+    //
+    // The floor keeps the sign it was given. Taking the magnitude and putting
+    // back a positive one turned a step of -1e-12 into +1e-9, so a table asked
+    // to count down counted up instead.
+    const floor = rawStep < 0 ? -MIN_STEP : MIN_STEP;
+    const step = Math.abs(rawStep) < MIN_STEP ? floor : rawStep;
     const digits = xDigits(start, step);
 
     for (let row = 0; row < ROW_COUNT; row += 1) {
