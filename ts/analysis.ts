@@ -25,6 +25,32 @@ const SCAN_STEPS = DEFAULT_SAMPLES - 1;
 /** Bisection halves the interval this many times: well past double precision. */
 const REFINE_STEPS = 80;
 
+/** How many samples the first, uniform pass takes to size up an integral. */
+const SCALE_STEPS = 200;
+
+/** How deep the adaptive split may go before an area is called impossible. */
+const MAX_DEPTH = 50;
+
+/** And how much work in total, so a pathological curve cannot hang the page. */
+const MAX_EVALUATIONS = 20000;
+
+/**
+ * How much of the gap survives halving the step before a point is a corner.
+ *
+ * Curvature halves it, leaving 0.5; a corner keeps all of it, leaving 1. The
+ * threshold sits between the two with room on either side.
+ */
+const CORNER_RATIO = 0.75;
+
+/** How far the two step sizes may disagree before there is no slope at all. */
+const SLOPE_TOLERANCE = 1e-3;
+
+/** How exact an area has to be, against how much area there is. */
+const AREA_TOLERANCE = 1e-10;
+
+/** Below this share of the area added up, what is left is rounding, not area. */
+const SETTLE_TOLERANCE = 1e-14;
+
 /** Evaluate without throwing; anything that fails is simply undefined here. */
 function safely(curve: Curve, x: number): number {
   try {
@@ -107,6 +133,215 @@ export function findRoot(curve: Curve, from: number, to: number): PlotPoint | nu
   }
 
   return null;
+}
+
+
+/**
+ * The central difference across x ± step, and how far the two sides disagree.
+ *
+ * The disagreement is the useful part: on a smooth curve it is the curvature
+ * times the step, so it shrinks with the step, while at a corner it is the
+ * whole turn and does not shrink at all.
+ */
+function slopeAcross(
+  curve: Curve,
+  x: number,
+  step: number
+): { slope: number; gap: number } | null {
+  // `high - low` rather than `2 * step`, because adding the step to x rounds
+  // it, and dividing by the width actually used beats the one asked for.
+  const high = x + step;
+  const low = x - step;
+  const above = safely(curve, high);
+  const below = safely(curve, low);
+  const here = safely(curve, x);
+  if (Number.isNaN(above) || Number.isNaN(below) || Number.isNaN(here)) return null;
+
+  const rising = (above - here) / (high - x);
+  const falling = (here - below) / (x - low);
+  return {
+    slope: (above - below) / (high - low),
+    gap: Math.abs(rising - falling),
+  };
+}
+
+/**
+ * The slope at a point.
+ *
+ * The step is scaled to x rather than fixed: the same absolute step that is
+ * sensible at x = 1 is far too small at x = 1e8, where x + step rounds back to
+ * x and the difference is nothing at all.
+ *
+ * Two things are checked before an answer is given, because a central
+ * difference will cheerfully average its way across a point where no slope
+ * exists:
+ *
+ * - A corner. The two one-sided slopes are compared at the step and at half
+ *   the step. Curvature makes them disagree in proportion to the step, so
+ *   halving it halves the disagreement; a corner keeps the whole turn however
+ *   small the step gets. Comparing the disagreement against a fixed size
+ *   instead would condemn any curve that bends sharply -- 100x² at zero is
+ *   flat, not a corner.
+ * - A jump. Both sides of one agree on an enormous slope, so the gap test
+ *   sees nothing; what gives it away is that the answer doubles when the step
+ *   halves instead of settling.
+ *
+ * The two differences are then combined so that their leading errors cancel,
+ * which is what keeps the answer good at a large x where the step is coarse.
+ */
+export function derivative(curve: Curve, x: number): number | null {
+  const step = Math.cbrt(Number.EPSILON) * Math.max(Math.abs(x), 1);
+  const here = safely(curve, x);
+  if (Number.isNaN(here)) return null;
+
+  const wide = slopeAcross(curve, x, step);
+  const narrow = slopeAcross(curve, x, step / 2);
+  if (wide === null || narrow === null) return null;
+
+  // Below this the gap is the float's own noise in the subtraction, and its
+  // ratio means nothing -- a straight line has no curvature to measure.
+  const noise = (Number.EPSILON * Math.max(Math.abs(here), 1) * 16) / step;
+  if (wide.gap > noise && narrow.gap > wide.gap * CORNER_RATIO) return null;
+
+  const settled = Math.abs(narrow.slope - wide.slope);
+  if (settled > Math.max(Math.abs(narrow.slope), 1) * SLOPE_TOLERANCE) return null;
+
+  // Richardson: the two have errors in h² and h²/4, and this combination
+  // cancels them.
+  return (4 * narrow.slope - wide.slope) / 3;
+}
+
+/**
+ * The area under the curve between two points, by adaptive Simpson's rule.
+ *
+ * Simpson fits a parabola through each pair of intervals. Rather than spend
+ * the same effort everywhere, each interval is compared against its own two
+ * halves: where they agree the answer is taken, and where they do not the
+ * interval is split and tried again.
+ *
+ * That adaptation is what tells a hard integral from an impossible one. The
+ * square root at the left end of `sqrt(x+10)` needs a great many small
+ * intervals and gets them, and converges. An asymptote never converges however
+ * far it is split, so it runs out of depth and is refused -- which is the
+ * honest answer, because the area there is infinite.
+ *
+ * Comparing two fixed resolutions cannot tell those apart. It rejects the
+ * square root, whose fourth derivative is unbounded at the end, and it accepts
+ * tan(x) across a window centred on zero, where the infinities on either side
+ * cancel to something that looks like nothing at all.
+ */
+export function integrate(curve: Curve, from: number, to: number): number | null {
+  if (from === to) return 0;
+  // Orientation is part of the answer: integrating backwards negates it.
+  if (from > to) {
+    const backwards = integrate(curve, to, from);
+    return backwards === null ? null : -backwards;
+  }
+
+  // How much area there is to be accurate about. The signed total cannot set
+  // its own tolerance -- it is near zero exactly when the cancellation makes
+  // accuracy hardest.
+  const scale = absoluteArea(curve, from, to);
+  if (scale === null) return null;
+  const tolerance = Math.max(scale, Number.MIN_VALUE) * AREA_TOLERANCE;
+
+  // An integral converges only if the area of its absolute value does, and
+  // that is the test that cannot be fooled by symmetry. tan(x) across a window
+  // centred on zero makes every estimate exactly zero -- the infinity on the
+  // left cancels the one on the right at every level of splitting, so nothing
+  // ever disagrees and the first interval is accepted whole. Its absolute
+  // value has nothing to cancel against, and never settles.
+  const converges = adapt((at) => Math.abs(safely(curve, at)), from, to, tolerance);
+  if (converges === null) return null;
+
+  const total = adapt(curve, from, to, tolerance);
+  if (total === null) return null;
+
+  // Areas above and below the axis cancel, and what survives an exact
+  // cancellation is the float's error bar rather than an area: the integral of
+  // x across a window centred on zero is nothing, not 3.6e-15. The bar is set
+  // by how much area was added up to get there, not by how much there could
+  // have been -- a curve reaching 1e8 can still have a real area of 6e-5.
+  return Math.abs(total) < scale * SETTLE_TOLERANCE ? 0 : total;
+}
+
+/**
+ * Adaptive Simpson over one interval, or null if it will not settle.
+ *
+ * Each interval is compared against its own two halves: where they agree the
+ * answer is taken, and where they do not the interval is split and tried
+ * again. Running out of depth, or of the work allowed, means the area is not
+ * one that can be measured -- which is the honest answer for an asymptote,
+ * where it is infinite.
+ */
+function adapt(
+  curve: Curve,
+  from: number,
+  to: number,
+  tolerance: number
+): number | null {
+  let budget = MAX_EVALUATIONS;
+  const evaluate = (at: number): number => {
+    budget -= 1;
+    return safely(curve, at);
+  };
+
+  const recurse = (
+    a: number,
+    b: number,
+    fa: number,
+    fm: number,
+    fb: number,
+    whole: number,
+    allowed: number,
+    depth: number
+  ): number | null => {
+    if (budget <= 0 || depth <= 0) return null;
+
+    const middle = (a + b) / 2;
+    const flm = evaluate((a + middle) / 2);
+    const frm = evaluate((middle + b) / 2);
+    if (Number.isNaN(flm) || Number.isNaN(frm)) return null;
+
+    const left = ((middle - a) / 6) * (fa + 4 * flm + fm);
+    const right = ((b - middle) / 6) * (fm + 4 * frm + fb);
+    const difference = left + right - whole;
+
+    // Simpson's error falls by sixteen when the interval halves, so the gap
+    // between the two is fifteen times the error left in the finer one.
+    if (Math.abs(difference) <= 15 * allowed) return left + right + difference / 15;
+
+    const lower = recurse(a, middle, fa, flm, fm, left, allowed / 2, depth - 1);
+    if (lower === null) return null;
+    const upper = recurse(middle, b, fm, frm, fb, right, allowed / 2, depth - 1);
+    return upper === null ? null : lower + upper;
+  };
+
+  const middle = (from + to) / 2;
+  const fa = evaluate(from);
+  const fm = evaluate(middle);
+  const fb = evaluate(to);
+  if (Number.isNaN(fa) || Number.isNaN(fm) || Number.isNaN(fb)) return null;
+
+  const whole = ((to - from) / 6) * (fa + 4 * fm + fb);
+  return recurse(from, to, fa, fm, fb, whole, tolerance, MAX_DEPTH);
+}
+
+/**
+ * Roughly how much curve there is, ignoring which side of the axis it is on.
+ *
+ * Only a scale, so a coarse uniform pass is enough. It is what the tolerance
+ * and the settling threshold are measured against.
+ */
+function absoluteArea(curve: Curve, from: number, to: number): number | null {
+  const step = (to - from) / SCALE_STEPS;
+  let total = 0;
+  for (let index = 0; index <= SCALE_STEPS; index += 1) {
+    const y = safely(curve, from + index * step);
+    if (Number.isNaN(y)) return null;
+    total += Math.abs(y);
+  }
+  return total * step;
 }
 
 /** Where two curves meet, which is a root of their difference. */

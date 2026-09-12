@@ -135,8 +135,54 @@ over the visible range and drop the trace marker on what they find:
 - **intersect** is a root of the difference of the two curves, and needs two
   of them; it says so when only one is drawn.
 
+**Slope and area.** `dy/dx` reports the gradient where the trace is sitting, or
+at the middle of the window if no trace is running. `∫ƒ(x)dx` measures the area
+between the curve and the axis across the whole window and shades what it
+counted, so the number on screen has a picture beside it — the area under
+`sin(x)` from `0` to `π` is `2`, and looks it.
+
+The slope is a central difference whose step is scaled to `x`, because a step
+that is sensible at `x = 1` disappears into the gap between neighbouring
+doubles at `x = 1e8`. Two things are checked before an answer is given, since a
+central difference will happily average its way across a point where no slope
+exists:
+
+- **A corner.** The two one-sided slopes are compared at the step and at half
+  the step. Curvature makes them disagree in proportion to the step, so halving
+  it halves the disagreement; a corner keeps the whole turn however small the
+  step gets. Judging the disagreement against a fixed size instead condemns any
+  curve that bends sharply — `100x²` at zero is flat, not a corner.
+- **A jump.** Both sides of one agree on an enormous slope, so the corner test
+  sees nothing; what gives it away is that the answer doubles when the step
+  halves instead of settling.
+
+The two differences are then combined so their leading errors cancel, which is
+what keeps the answer good at a large `x` where the step is coarse.
+
+The area is **adaptive** Simpson's rule: each interval is compared against its
+own two halves, and where they disagree the interval is split and tried again.
+That adaptation is what tells a hard integral from an impossible one — the
+square root at the left end of `sqrt(x+10)` needs a great many small intervals
+and gets them, while an asymptote never converges however far it is split and
+is refused, because the area there is infinite.
+
+The test is run on the absolute value as well, because that is the one that
+cannot be fooled by symmetry: `tan(x)` across a window centred on zero makes
+every estimate exactly zero — the infinity on the left cancels the one on the
+right at every level — so nothing ever disagrees and a check on the signed
+total alone accepts the first interval whole and reports an area of `0`.
+
+Areas above and below the axis cancel, and what survives an exact cancellation
+is the float's error bar rather than an area, so `∫x dx` across a window centred
+on zero is `0` and not `3.6e-15`. That bar is set by how much area was added up
+to reach the answer, not by how much there could have been — a curve reaching
+`1e8` can still have a real area of `6e-5`.
+
 Searches run over the window, so zooming in on a region is how you pick which
-root or turning point you want. Zooming keeps the marker where it is, unless
+root or turning point you want. Moving the window drops the shading with it —
+a region and a total that described the old window are not an answer about this
+one — and so does storing a value the curve uses, since that changes what the
+curve is. Zooming keeps the marker where it is, unless
 the new window no longer contains it — then the trace is dropped rather than
 left describing a point off the edge.
 

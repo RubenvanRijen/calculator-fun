@@ -945,6 +945,118 @@ describe("setupCalculator", () => {
         .toBe("Nothing to search");
     });
 
+    it("reports the slope at the traced point", () => {
+      // Y1 is x^2-2, whose slope at x = 3 is 6.
+      root.querySelector<HTMLElement>('[data-graph-find="root"]')?.click();
+      for (let press = 0; press < 3; press += 1) {
+        root.querySelector<HTMLElement>('[data-graph-step="1"]')?.click();
+      }
+      const readout = () => root.querySelector("[data-graph-readout]")?.textContent ?? "";
+      root.querySelector<HTMLElement>('[data-graph-find="slope"]')?.click();
+      expect(readout()).toContain("dy/dx =");
+      expect(readout()).toContain("Y1");
+    });
+
+    it("takes the slope at the middle when nothing is traced", () => {
+      // The window is -10 to 10, so the middle is 0, where x^2-2 is flat.
+      root.querySelector<HTMLElement>('[data-graph-find="slope"]')?.click();
+      const readout = root.querySelector("[data-graph-readout]")?.textContent ?? "";
+      expect(readout).toContain("x = 0");
+      expect(readout).toContain("dy/dx = 0");
+    });
+
+    it("says when there is no slope to report", () => {
+      const first = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
+      if (first) first.value = "abs(x)";
+      first?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      // The middle of the window is 0, where abs(x) turns a corner.
+      root.querySelector<HTMLElement>('[data-graph-find="slope"]')?.click();
+      expect(root.querySelector("[data-graph-readout]")?.textContent).toContain("No slope");
+    });
+
+    it("integrates across the window and shades what it measured", () => {
+      const first = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
+      if (first) first.value = "x";
+      first?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      root.querySelector<HTMLElement>('[data-graph-find="area"]')?.click();
+      const readout = root.querySelector("[data-graph-readout]")?.textContent ?? "";
+      // x over -10 to 10 cancels to nothing.
+      expect(readout).toContain("from -10 to 10 = 0");
+      expect(root.querySelectorAll("[data-graph-area]").length).toBeGreaterThan(0);
+    });
+
+    it("drops the shading when the window moves away from it", () => {
+      root.querySelector<HTMLElement>('[data-graph-find="area"]')?.click();
+      expect(root.querySelectorAll("[data-graph-area]").length).toBeGreaterThan(0);
+
+      root.querySelector<HTMLElement>('[data-graph-zoom="in"]')?.click();
+      // The region and its total described the old window, not this one.
+      expect(root.querySelectorAll("[data-graph-area]").length).toBe(0);
+      expect(root.querySelector("[data-graph-readout]")?.textContent).toBe("");
+    });
+
+    it("draws the shading under the curve, not over it", () => {
+      root.querySelector<HTMLElement>('[data-graph-find="area"]')?.click();
+      const drawn = [...(root.querySelector("[data-graph-svg]")?.children ?? [])];
+      const area = drawn.findIndex((node) => node.classList.contains("plot-area"));
+      const line = drawn.findIndex((node) => node.classList.contains("plot-line"));
+      expect(area).toBeGreaterThanOrEqual(0);
+      expect(area).toBeLessThan(line);
+    });
+
+    it("drops the area when a stored value the curve uses changes", () => {
+      const setRegister = (value: string) => {
+        button("Vars").click();
+        press(...value.split(""));
+        const row = root.querySelector<HTMLElement>('[data-register="A"]');
+        [...(row?.querySelectorAll("button") ?? [])]
+          .find((b) => b.textContent?.trim() === "Set")?.click();
+        button("ƒ(x)").click();
+      };
+
+      setRegister("2");
+      const first = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
+      if (first) first.value = "A*x";
+      first?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      root.querySelector<HTMLElement>('[data-graph-find="area"]')?.click();
+      expect(root.querySelectorAll("[data-graph-area]").length).toBeGreaterThan(0);
+
+      // Storing a new A changes what the curve is, so the region and its
+      // total are the answer to a curve that is no longer on the chart.
+      setRegister("5");
+
+      expect(root.querySelectorAll("[data-graph-area]").length).toBe(0);
+      expect(root.querySelector("[data-graph-readout]")?.textContent).toBe("");
+    });
+
+    it("shades in the colour of the curve it belongs to", () => {
+      const first = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
+      const second = root.querySelector<HTMLInputElement>('[data-graph-input="1"]');
+      if (first) first.value = "";
+      first?.dispatchEvent(new Event("input", { bubbles: true }));
+      if (second) second.value = "x^2";
+      second?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      root.querySelector<HTMLElement>('[data-graph-find="area"]')?.click();
+      // Y2's region must carry Y2's index, or the stylesheet paints it in Y1's
+      // colour underneath a purple curve.
+      expect(root.querySelector("[data-graph-area]")?.getAttribute("data-graph-area"))
+        .toBe("1");
+    });
+
+    it("says so when there is no area to report", () => {
+      const first = root.querySelector<HTMLInputElement>('[data-graph-input="0"]');
+      if (first) first.value = "1/(x-0.317)";
+      first?.dispatchEvent(new Event("input", { bubbles: true }));
+
+      root.querySelector<HTMLElement>('[data-graph-find="area"]')?.click();
+      expect(root.querySelector("[data-graph-readout]")?.textContent).toContain("No area");
+      expect(root.querySelectorAll("[data-graph-area]").length).toBe(0);
+    });
+
     it("says so when there is only one curve to intersect", () => {
       root.querySelector<HTMLElement>('[data-graph-find="intersect"]')?.click();
       expect(root.querySelector("[data-graph-readout]")?.textContent)

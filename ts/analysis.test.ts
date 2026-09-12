@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { findExtremum, findIntersection, findRoot } from "@/analysis.ts";
+import { derivative, findExtremum, findIntersection, findRoot, integrate } from "@/analysis.ts";
 import { plot } from "@/graph.ts";
 
 describe("findRoot", () => {
@@ -176,5 +176,174 @@ describe("findExtremum", () => {
   it("ignores the parts where the curve is undefined", () => {
     const point = findExtremum((x) => (x < 0 ? NaN : (x - 2) ** 2), -5, 5, "min");
     expect(point?.x).toBeCloseTo(2, 6);
+  });
+});
+
+describe("derivative", () => {
+  it("differentiates a line to its slope", () => {
+    expect(derivative((x) => 3 * x + 1, 5)).toBeCloseTo(3, 9);
+  });
+
+  it("differentiates x squared to 2x", () => {
+    expect(derivative((x) => x * x, 4)).toBeCloseTo(8, 6);
+    expect(derivative((x) => x * x, -3)).toBeCloseTo(-6, 6);
+  });
+
+  it("differentiates sine to cosine", () => {
+    expect(derivative(Math.sin, 0)).toBeCloseTo(1, 8);
+    expect(derivative(Math.sin, Math.PI / 2)).toBeCloseTo(0, 8);
+    expect(derivative(Math.sin, Math.PI)).toBeCloseTo(-1, 8);
+  });
+
+  it("is zero at a turning point", () => {
+    expect(derivative((x) => x * x - 2, 0)).toBeCloseTo(0, 8);
+  });
+
+  it("works far from the origin, where a fixed step would vanish", () => {
+    // At 1e8 a step of 1e-10 is lost in the gap between one double and the
+    // next, and the difference comes out as pure noise.
+    expect(derivative((x) => 3 * x, 1e8)).toBeCloseTo(3, 6);
+  });
+
+  it("has no answer at a corner", () => {
+    // abs(x) turns at zero. Averaging the two sides gives 0, which is not a
+    // flat spot -- it is a point where there is no slope at all.
+    expect(derivative(Math.abs, 0)).toBeNull();
+  });
+
+  it("differentiates a sharply bending curve rather than calling it a corner", () => {
+    // 100x^2 is flat at zero and bends hard. Judging the disagreement between
+    // the two sides against a fixed size condemns it, because curvature makes
+    // them disagree in proportion to the step -- which is exactly what tells
+    // it apart from a corner, where they disagree by the whole turn.
+    expect(derivative((x) => 100 * x * x, 0)).toBeCloseTo(0, 6);
+    expect(derivative((x) => 1000 * x * x, 0)).toBeCloseTo(0, 6);
+    expect(derivative((x) => 1000 * x * x, 2)).toBeCloseTo(4000, 3);
+  });
+
+  it("differentiates an oscillating curve far from the origin", () => {
+    // The step grows with x so that x + step is still a different number, and
+    // at x = 1000 it is coarse next to a wave of length 2pi.
+    expect(derivative(Math.sin, 1000)).toBeCloseTo(Math.cos(1000), 6);
+    expect(derivative(Math.sin, 200)).toBeCloseTo(Math.cos(200), 6);
+  });
+
+  it("differentiates steeply near a pole without reaching it", () => {
+    expect(derivative((x) => 1 / x, 0.001)).toBeCloseTo(-1e6, -2);
+  });
+
+  it("has no answer at a jump", () => {
+    // Both sides of a jump agree on an enormous slope, so the corner test
+    // sees nothing. What gives it away is that the answer doubles when the
+    // step halves instead of settling.
+    expect(derivative(Math.sign, 0)).toBeNull();
+  });
+
+  it("still differentiates that same corner away from the turn", () => {
+    expect(derivative(Math.abs, 5)).toBeCloseTo(1, 9);
+    expect(derivative(Math.abs, -5)).toBeCloseTo(-1, 9);
+  });
+
+  it("has no answer where the curve is undefined", () => {
+    expect(derivative(Math.sqrt, -4)).toBeNull();
+  });
+
+  it("has no answer at a pole", () => {
+    expect(derivative((x) => 1 / x, 0)).toBeNull();
+  });
+
+  it("survives a curve that throws", () => {
+    expect(derivative(() => { throw new Error("nope"); }, 1)).toBeNull();
+  });
+});
+
+describe("integrate", () => {
+  it("integrates a constant to a rectangle", () => {
+    expect(integrate(() => 3, 0, 4)).toBeCloseTo(12, 9);
+  });
+
+  it("integrates x to half x squared", () => {
+    expect(integrate((x) => x, 0, 4)).toBeCloseTo(8, 9);
+  });
+
+  it("integrates a cubic exactly, which Simpson's rule can do", () => {
+    // The integral of x^3 from 0 to 2 is 4.
+    expect(integrate((x) => x * x * x, 0, 2)).toBeCloseTo(4, 9);
+  });
+
+  it("integrates sine over half a turn to two", () => {
+    expect(integrate(Math.sin, 0, Math.PI)).toBeCloseTo(2, 9);
+  });
+
+  it("integrates sine over a full turn to nothing", () => {
+    // The halves cancel: the area above the axis and the area below it. What
+    // survives an exact cancellation is the float's error bar, not an area,
+    // so the answer is 0 rather than 3.6e-15.
+    expect(integrate(Math.sin, 0, 2 * Math.PI)).toBe(0);
+    expect(integrate((x) => x, -10, 10)).toBe(0);
+  });
+
+  it("leaves a genuinely tiny area alone", () => {
+    // 1e-15 is nothing next to an area of 200, and everything next to an area
+    // of 1e-15. The cutoff is relative to how much area was added up.
+    expect(integrate(() => 1e-15, 0, 1)).toBeCloseTo(1e-15, 25);
+  });
+
+  it("counts area below the axis as negative", () => {
+    expect(integrate((x) => x, -4, 0)).toBeCloseTo(-8, 9);
+  });
+
+  it("is nothing across no distance at all", () => {
+    expect(integrate((x) => x * x, 3, 3)).toBe(0);
+  });
+
+  it("negates when the ends are given the other way round", () => {
+    const forwards = integrate((x) => x * x, 0, 3) ?? 0;
+    expect(integrate((x) => x * x, 3, 0)).toBeCloseTo(-forwards, 9);
+  });
+
+  it("has no answer across a point the curve does not reach", () => {
+    // 1/x does not converge across zero, and the sample landing on it says so.
+    expect(integrate((x) => 1 / x, -1, 1)).toBeNull();
+  });
+
+  it("refuses an area that has not settled", () => {
+    // A pole inside the range never settles however finely it is split, which
+    // is the honest answer: the area there is infinite.
+    expect(integrate((x) => 1 / (x - 0.317), -1, 1)).toBeNull();
+  });
+
+  it("refuses a divergent area whose halves cancel exactly", () => {
+    // tan is odd about the middle of this window, so the infinity on the left
+    // cancels the one on the right at every level of splitting. Every estimate
+    // is exactly zero, nothing ever disagrees, and a check on the signed total
+    // alone accepts the first interval whole and reports an area of 0.
+    expect(integrate(Math.tan, -10, 10)).toBeNull();
+    expect(integrate(Math.tan, -20, 20)).toBeNull();
+  });
+
+  it("integrates a curve whose slope runs away at the end", () => {
+    // The fourth derivative of a square root is unbounded at zero, so two
+    // fixed resolutions disagree by far more than a smooth curve would -- and
+    // refusing on that basis turns away an ordinary, finite area.
+    expect(integrate((x) => Math.sqrt(x + 10), -10, 10)).toBeCloseTo(59.62847939, 6);
+    expect(integrate(Math.sqrt, 0, 4)).toBeCloseTo(16 / 3, 9);
+  });
+
+  it("keeps a small area under a curve that reaches far higher", () => {
+    // The area is 6.3e-5 under a curve reaching 1e8. Judging what counts as
+    // rounding by how much area there could have been swallows it whole.
+    // To seven places, not more: adding and subtracting numbers of size 1e8
+    // to arrive at 6e-5 costs about eight digits, and no rule can give them
+    // back. The point is that the answer survives at all rather than being
+    // rounded away to zero.
+    expect(integrate((x) => 1e8 * Math.sin(x) + 1e-5, 0, 2 * Math.PI))
+      .toBeCloseTo(2 * Math.PI * 1e-5, 7);
+  });
+
+  it("integrates a steep but honest curve", () => {
+    // Large values are not the problem; not converging is. The integral of
+    // 1/x from 1 to e is exactly 1.
+    expect(integrate((x) => 1 / x, 1, Math.E)).toBeCloseTo(1, 9);
   });
 });

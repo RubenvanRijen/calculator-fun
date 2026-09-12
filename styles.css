@@ -674,6 +674,18 @@ body {
     font-size: .85rem;
 }
 
+/* The region an integral measured, drawn under everything else and in the
+   colour of the curve it belongs to. */
+.plot-area {
+    fill: var(--plot-line);
+    fill-opacity: .22;
+    stroke: none;
+}
+
+.plot-area[data-graph-area="1"] { fill: var(--plot-line-2); }
+.plot-area[data-graph-area="2"] { fill: var(--plot-line-3); }
+.plot-area[data-graph-area="3"] { fill: var(--plot-line-4); }
+
 /* Scatter points from the Stats tab, drawn over the curves. */
 /* A chip that is a switch rather than a button, so its state has to show. */
 .chip.is-active {

@@ -1,5 +1,5 @@
 import { compileCurve, plotAll } from "@/graph.ts";
-import { findExtremum, findIntersection, findRoot } from "@/analysis.ts";
+import { derivative, findExtremum, findIntersection, findRoot, integrate } from "@/analysis.ts";
 import { SERIES_COUNT } from "@/function-series.ts";
 import { readNumber } from "@/ui/read-number.ts";
 import type { FunctionSeries } from "@/function-series.ts";
@@ -13,6 +13,9 @@ import type { ExtremumKind } from "@/types/extremum-kind.ts";
 const PLOT_WIDTH = 280;
 const PLOT_HEIGHT = 200;
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** How many points the shaded region of an integral is drawn from. */
+const REGION_STEPS = 240;
 
 /** How far one press of the trace arrows moves, as a share of the range. */
 const TRACE_STEP = 1 / 60;
@@ -36,7 +39,7 @@ export function setupGraphPanel(
   contextOf: () => EvalContext,
   /** Loose points drawn over the curves, for a scatter from the Stats tab. */
   scatterOf: () => readonly PlotPoint[] = () => []
-): { render: () => void } {
+): { render: () => void; forgetArea: () => void } {
   const query = <T extends HTMLElement>(selector: string): T | null =>
     root.querySelector<T>(selector);
 
@@ -59,6 +62,14 @@ export function setupGraphPanel(
    * and re-evaluating the curve there would put the float residual back.
    */
   let traced: { series: number; x: number; known: number | undefined } | null = null;
+  /**
+   * The area an integral measured: which series, and over what.
+   *
+   * The range is kept so a later zoom can tell that the shading no longer
+   * describes what is on screen -- redrawing it over a new window would leave
+   * a region and a total that answer a question nobody asked.
+   */
+  let shaded: { series: number; xMin: number; xMax: number } | null = null;
 
   const expressions = (): readonly string[] => series.all();
 
@@ -105,6 +116,12 @@ export function setupGraphPanel(
     if (panel?.hidden === true) return;
 
     range = { xMin: readNumber(minInput, -10), xMax: readNumber(maxInput, 10) };
+
+    // One place rather than every caller that can move the window.
+    if (shaded !== null && (shaded.xMin !== range.xMin || shaded.xMax !== range.xMax)) {
+      shaded = null;
+      if (readout) readout.textContent = "";
+    }
     plotted = plotAll(expressions(), range.xMin, range.xMax, undefined, contextOf());
 
     // Report the first thing that went wrong, naming which field it was in --
@@ -149,6 +166,43 @@ export function setupGraphPanel(
     }
     if (view.yMin < 0 && view.yMax > 0) {
       svg.append(line(0, toScreenY(0), PLOT_WIDTH, toScreenY(0)));
+    }
+
+    if (shaded !== null) {
+      const curve = curveFor(shaded.series);
+      const baseline = Math.min(Math.max(toScreenY(0), 0), PLOT_HEIGHT);
+      const clamp = (value: number): number =>
+        Math.min(Math.max(toScreenY(value), 0), PLOT_HEIGHT);
+
+      // Sampled from the curve rather than taken from the drawn segments: the
+      // plot drops whatever runs past its magnitude cutoff, and a region built
+      // from what is left would leave out the very spans that decided the
+      // total. Clamped to the box so a spike shades to the edge instead of
+      // escaping it.
+      const points: string[] = [];
+      for (let index = 0; index <= REGION_STEPS; index += 1) {
+        const x = range.xMin + ((range.xMax - range.xMin) * index) / REGION_STEPS;
+        let y: number;
+        try {
+          y = curve === null ? Number.NaN : curve(x);
+        } catch {
+          y = Number.NaN;
+        }
+        if (!Number.isFinite(y)) continue;
+        points.push(`L${toScreenX(x).toFixed(2)} ${clamp(y).toFixed(2)}`);
+      }
+
+      if (points.length > 1) {
+        const region = doc.createElementNS(SVG_NS, "path");
+        region.setAttribute(
+          "d",
+          `M0 ${baseline.toFixed(2)} ${points.join(" ")} ` +
+          `L${PLOT_WIDTH.toFixed(2)} ${baseline.toFixed(2)} Z`
+        );
+        region.setAttribute("class", "plot-area");
+        region.setAttribute("data-graph-area", String(shaded.series));
+        svg.append(region);
+      }
     }
 
     plotted.series.forEach((result, index) => {
@@ -291,6 +345,35 @@ export function setupGraphPanel(
       return;
     }
 
+    if (what === "slope") {
+      // Where the trace is, or the middle of the window if it is not running.
+      const x = traced?.x ?? (range.xMin + range.xMax) / 2;
+      const slope = derivative(curve, x);
+      if (readout) {
+        readout.textContent = slope === null
+          ? `No slope at x = ${trim(x)}`
+          : `Y${series + 1}   x = ${trim(x)}   dy/dx = ${trim(slope)}`;
+      }
+      return;
+    }
+
+    if (what === "area") {
+      const area = integrate(curve, range.xMin, range.xMax);
+      if (area === null) {
+        shaded = null;
+        render();
+        if (readout) readout.textContent = "No area across this range";
+        return;
+      }
+      shaded = { series, xMin: range.xMin, xMax: range.xMax };
+      render();
+      if (readout) {
+        readout.textContent =
+          `Y${series + 1}   \u222b from ${trim(range.xMin)} to ${trim(range.xMax)} = ${trim(area)}`;
+      }
+      return;
+    }
+
     let found = null;
     if (what === "root") {
       found = findRoot(curve, range.xMin, range.xMax);
@@ -342,6 +425,8 @@ export function setupGraphPanel(
   series.onChange(() => {
     syncInputs();
     traced = null;
+    // The shading measured a curve that is no longer the curve.
+    shaded = null;
     render();
   }, signal);
   for (const input of [minInput, maxInput]) {
@@ -388,5 +473,17 @@ export function setupGraphPanel(
     if (what !== undefined) find(what);
   }, { signal });
 
-  return { render };
+  /**
+   * Drop the shaded region, for a change the panel cannot see for itself.
+   *
+   * Stored values are part of what a curve means, so storing a new one makes
+   * the region and its total describe a curve that is no longer there.
+   */
+  const forgetArea = (): void => {
+    if (shaded === null) return;
+    shaded = null;
+    if (readout) readout.textContent = "";
+  };
+
+  return { render, forgetArea };
 }

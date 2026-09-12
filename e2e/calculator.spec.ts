@@ -597,6 +597,20 @@ test.describe("graph", () => {
     await expect(page.locator('[data-stats-cell="L1"][data-stats-row="0"]')).toHaveValue("42");
   });
 
+  test("reports a slope and an area on the graph", async ({ page }) => {
+    await page.locator('[data-graph-input="0"]').fill("x^2");
+    const readout = page.locator("[data-graph-readout]");
+
+    // The window is -10 to 10, so the middle is 0, where x^2 is flat.
+    await page.locator('[data-graph-find="slope"]').click();
+    await expect(readout).toContainText("dy/dx = 0");
+
+    // x^2 over -10 to 10 is 2000/3.
+    await page.locator('[data-graph-find="area"]').click();
+    await expect(readout).toContainText("666.7");
+    await expect(page.locator("[data-graph-area]").first()).toBeVisible();
+  });
+
   test("keeps every tab inside the panel", async ({ page }) => {
     // Each new tab has squeezed this row, and the last one was cut off the
     // edge when the sixth arrived. Neither the unit suite nor the typechecker

@@ -75,10 +75,21 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
 
   const registerPanel = new RegisterPanel(root, doc, signal, calculator, () => update());
 
+  /** What the graph reads besides the expressions themselves. */
+  let plottedContext = "";
+
   function update(): void {
     display.render(calculator);
     historyPanel.render(calculator);
     registerPanel.render();
+
+    // A stored value is part of what "A*x" means, so changing one makes a
+    // shaded area the answer to a curve that is no longer on the chart.
+    const context = JSON.stringify(graphContext());
+    if (context !== plottedContext) {
+      plottedContext = context;
+      graph.forgetArea();
+    }
     // "Ans*x" is plotted and tabulated against the last answer, so pressing =
     // changes what those two panels should be showing. Each render is a no-op
     // while its own panel is hidden, so this costs nothing on the History tab.
