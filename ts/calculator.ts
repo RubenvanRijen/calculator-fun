@@ -1,16 +1,10 @@
 import { isOperation } from "@/expression.ts";
-import {
-  isInteger as isExactInteger,
-  toDisplay as toExactDisplay,
-  toExpression as toExactExpression,
-  toMixedDisplay,
-} from "@/exact.ts";
-import type { ExactValue } from "@/interfaces/exact-value.ts";
 import { ExpressionBuffer } from "@/expression-buffer.ts";
 import { HistoryLog } from "@/history-log.ts";
 import { MemoryRegister } from "@/memory-register.ts";
 import { EntryRecall } from "@/entry-recall.ts";
 import { Environment } from "@/environment.ts";
+import { ExactResult } from "@/exact-result.ts";
 import {
   balanceParentheses,
   expectsOperand,
@@ -45,6 +39,8 @@ export class Calculator {
   readonly #recall = new EntryRecall();
   /** The angle mode, Ans and the stored letters: what survives AC. */
   readonly #environment = new Environment();
+  /** The exact reading of the last answer, and the form it is shown in. */
+  readonly #exactResult = new ExactResult();
 
   /** Set when the last action could not be completed. Cleared on next input. */
   error: string | null = null;
@@ -54,16 +50,8 @@ export class Calculator {
   #justComputed = false;
   /** The trailing "+3" of the last sum, so "=" can be pressed again. */
   #repeatTail: string | null = null;
-  /** How the last result reads exactly, when it has an exact form. */
-  #exact: string | null = null;
-  /** The same value, kept so it can be carried forward without rounding. */
-  #exactValue: ExactValue | null = null;
-  /** Whether the display is showing the exact form rather than the decimal. */
-  #showingExact = true;
   /** Whether the entry being typed used the mixed-number key. */
   #usedMixed = false;
-  /** Whether the answer on screen should be written as a mixed number. */
-  #showingMixed = false;
 
   /** The expression as typed, e.g. "12+3*4". */
   get expression(): string {
@@ -287,11 +275,8 @@ export class Calculator {
     this.error = null;
     this.#result = null;
     this.#preview = "";
-    this.#exact = null;
-    this.#exactValue = null;
-    this.#showingExact = true;
+    this.#exactResult.clear();
     this.#usedMixed = false;
-    this.#showingMixed = false;
     this.#justComputed = false;
     this.#repeatTail = null;
   }
@@ -539,11 +524,10 @@ export class Calculator {
       // The same exact carry the operator keys get, so "1÷3= =" gives 1/9
       // rather than 0.111111111111.
       const carried =
-        this.#exactValue !== null && !isExactInteger(this.#exactValue)
-          ? toExactExpression(this.#exactValue)
-          : this.#repeatTail.startsWith("^") && this.#result.startsWith("-")
-            ? `(${this.#result})`
-            : this.#result;
+        this.#exactResult.carry ??
+        (this.#repeatTail.startsWith("^") && this.#result.startsWith("-")
+          ? `(${this.#result})`
+          : this.#result);
       this.#buffer.replace(carried + this.#repeatTail);
     }
 
@@ -564,26 +548,19 @@ export class Calculator {
     }
 
     const result = roundResult(value).toString();
-    this.#exactValue = this.#environment.exactValueOf(expression);
-    this.#exact = this.#displayableExact(this.#exactValue, result);
-    // An answer keeps the form of the question, as it does on the hardware:
-    // ask in fractions and get a fraction, ask in decimals and get a decimal.
-    // F<->D swaps either way.
-    this.#showingExact = !expression.includes(".");
-    // Same rule for the shape of the fraction: ask with a mixed number and
-    // the answer comes back as one.
-    this.#showingMixed = this.#usedMixed;
+    this.#exactResult.record({
+      value: this.#environment.exactValueOf(expression),
+      expression,
+      decimal: result,
+      mixed: this.#usedMixed,
+    });
     this.#repeatTail = trailingOperation(expression);
     // The history shows what the display showed, and recalls a form the
     // parser can read back.
     this.#history.add(
       formatExpression(expression),
-      // What the display showed, mixed number and all. The recall value is
-      // separate and stays something the parser can read back.
-      this.#showingExact && this.#exact !== null
-        ? this.#mixedResult() ?? this.#exact
-        : result,
-      this.#exactValue !== null ? toExactExpression(this.#exactValue) : result
+      this.#exactResult.shown ?? result,
+      this.#exactResult.asExpression ?? result
     );
 
     this.#recall.add(expression);
@@ -614,8 +591,9 @@ export class Calculator {
   /** The large lower line: the result, or a live preview while typing. */
   get resultDisplay(): string {
     if (this.#buffer.isEmpty && this.#result === null) return "";
-    if (this.#justComputed && this.#showingExact && this.#exact !== null) {
-      return this.#mixedResult() ?? this.#exact;
+    if (this.#justComputed) {
+      const shown = this.#exactResult.shown;
+      if (shown !== null) return shown;
     }
     return formatOperand(this.#preview);
   }
@@ -641,47 +619,20 @@ export class Calculator {
     return true;
   }
 
-  /** The answer as a mixed number, when one was asked for and one exists. */
-  #mixedResult(): string | null {
-    if (!this.#showingMixed || this.#exactValue === null) return null;
-    return toMixedDisplay(this.#exactValue);
-  }
-
   /** Whether there is an exact form to toggle to, for the F<->D key. */
   get hasExactForm(): boolean {
-    return this.#justComputed && this.#exact !== null;
+    return this.#justComputed && this.#exactResult.hasForm;
   }
 
   /** Whether the exact form is the one currently on screen. */
   get isShowingExact(): boolean {
-    return this.hasExactForm && this.#showingExact;
+    return this.hasExactForm && this.#exactResult.showing;
   }
 
   /** Swap between the exact form and the decimal. */
   toggleExact(): void {
     if (!this.hasExactForm) return;
-    this.#showingExact = !this.#showingExact;
-  }
-
-  /**
-   * Whether an exact value is worth showing.
-   *
-   * A form that reads the same as the decimal is skipped, which covers plain
-   * integers without needing a rule of its own: 2 + 2 is "4" both ways. Where
-   * they differ the exact form is shown, including the integer 0 that the
-   * float missed.
-   *
-   * Deliberately *not* cross-checked against the float. Where the two differ
-   * it is the float that has drifted -- sin(180^5 degrees) is exactly 0, while
-   * the float says -2.4e-7 -- so rejecting the exact value on disagreement
-   * would discard the correct answer in favour of the wrong one. A tolerance
-   * loose enough to accept that drift could not catch a real bug either. The
-   * exact path is guarded by its own tests instead.
-   */
-  #displayableExact(value: ExactValue | null, decimal: string): string | null {
-    if (value === null) return null;
-    const display = toExactDisplay(value);
-    return display === decimal ? null : display;
+    this.#exactResult.toggle();
   }
 
   /** Clear the error and start a new expression when one has just finished. */
@@ -707,8 +658,9 @@ export class Calculator {
     // so continuing from a displayed 1/3 and multiplying by 3 gives exactly 1.
     // It is already bracketed, so it needs no help with a negative. A plain
     // integer is left to the decimal path below, which does handle that.
-    if (this.#exactValue !== null && !isExactInteger(this.#exactValue)) {
-      this.#buffer.replace(toExactExpression(this.#exactValue));
+    const exact = this.#exactResult.carry;
+    if (exact !== null) {
+      this.#buffer.replace(exact);
       this.#justComputed = false;
       return;
     }
