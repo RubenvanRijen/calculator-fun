@@ -992,6 +992,275 @@ describe("setupCalculator", () => {
     });
   });
 
+  describe("stats", () => {
+    const cellInput = (list: string, row: number) =>
+      root.querySelector<HTMLInputElement>(
+        `[data-stats-cell="${list}"][data-stats-row="${row}"]`
+      );
+    const type = (list: string, row: number, text: string) => {
+      const input = cellInput(list, row);
+      if (input) input.value = text;
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const summaryRow = (label: string) => {
+      const rows = [...root.querySelectorAll("[data-stats-summary] tr")];
+      const match = rows.find((tr) => tr.querySelector("th")?.textContent === label);
+      return [...(match?.querySelectorAll("td") ?? [])].map((td) => td.textContent);
+    };
+    const fit = () => root.querySelector("[data-stats-fit]")?.textContent ?? "";
+    const act = (name: string) =>
+      root.querySelector<HTMLElement>(`[data-stats-action="${name}"]`)?.click();
+
+    beforeEach(() => {
+      button("Stats").click();
+    });
+
+    it("has a tab and a panel", () => {
+      expect(root.querySelector('[data-panel="stats"]')).not.toBeNull();
+      expect(root.querySelector('[data-tab="stats"]')).not.toBeNull();
+    });
+
+    it("offers empty rows to type into", () => {
+      expect(root.querySelectorAll("[data-stats-body] tr").length).toBeGreaterThan(0);
+      expect(cellInput("L1", 0)?.value).toBe("");
+    });
+
+    it("summarises a column as it is typed", () => {
+      type("L1", 0, "2");
+      type("L1", 1, "4");
+      type("L1", 2, "9");
+
+      expect(summaryRow("n")[0]).toBe("3");
+      expect(summaryRow("x̄")[0]).toBe("5");
+      expect(summaryRow("med")[0]).toBe("4");
+      expect(summaryRow("max")[0]).toBe("9");
+    });
+
+    it("leaves the other column alone", () => {
+      type("L1", 0, "5");
+      expect(summaryRow("n")[1]).toBe("—");
+    });
+
+    it("does not rewrite the cell being typed in", () => {
+      // Rewriting "1." to "1" would make the next keystroke 15, not 1.5.
+      const input = cellInput("L1", 0);
+      if (input) input.value = "1.";
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(cellInput("L1", 0)?.value).toBe("1.");
+    });
+
+    it("ignores text that is not a number", () => {
+      type("L1", 0, "3");
+      type("L1", 1, "wobble");
+      expect(summaryRow("n")[0]).toBe("1");
+    });
+
+    it("fits a line through the paired rows", () => {
+      // y = 3x + 1, exactly.
+      const xs = [0, 1, 2, 3];
+      xs.forEach((x, row) => {
+        type("L1", row, String(x));
+        type("L2", row, String(3 * x + 1));
+      });
+
+      expect(fit()).toContain("y = 3x + 1");
+      expect(fit()).toContain("r² = 1");
+    });
+
+    it("writes a negative intercept as a subtraction", () => {
+      [0, 1, 2].forEach((x, row) => {
+        type("L1", row, String(x));
+        type("L2", row, String(2 * x - 5));
+      });
+      expect(fit()).toContain("y = 2x − 5");
+    });
+
+    it("says when there is no line to fit", () => {
+      type("L1", 0, "1");
+      type("L2", 0, "2");
+      expect(fit()).toContain("A line needs two rows");
+    });
+
+    it("adds a row", () => {
+      const before = root.querySelectorAll("[data-stats-body] tr").length;
+      act("add");
+      expect(root.querySelectorAll("[data-stats-body] tr").length).toBe(before + 1);
+    });
+
+    it("clears the cells, and the inputs with them", () => {
+      type("L1", 0, "5");
+      act("clear");
+      expect(cellInput("L1", 0)?.value).toBe("");
+      expect(summaryRow("n")[0]).toBe("—");
+    });
+
+    it("plots the scatter and its fit on the graph", () => {
+      [1, 2, 3, 4].forEach((x, row) => {
+        type("L1", row, String(x));
+        type("L2", row, String(2 * x));
+      });
+      act("plot");
+
+      // It switches to the graph, fits the window to the data, puts the line
+      // in a free slot and draws a point per row.
+      expect(root.querySelector<HTMLElement>('[data-panel="graph"]')?.hidden).toBe(false);
+      expect(root.querySelectorAll("[data-graph-point]").length).toBe(4);
+
+      // The line is y = 2x exactly, and it goes in the first free slot rather
+      // than over the top of whatever was already being looked at.
+      const value = (index: number) =>
+        root.querySelector<HTMLInputElement>(`[data-graph-input="${index}"]`)?.value;
+      expect(value(0)).toBe("x^2-2");
+      expect(value(1)).toBe("2*x+0");
+    });
+
+    it("does not rewrite a graph field while it is being typed in", () => {
+      // Typing "x + 1" passes through "x + ", and the model keeps expressions
+      // trimmed. Writing the trimmed text back mid-word would eat the space
+      // the moment it was typed.
+      button("ƒ(x)").click();
+      const input = root.querySelector<HTMLInputElement>('[data-graph-input="1"]');
+      if (input) input.value = "x + ";
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(input?.value).toBe("x + ");
+    });
+
+    it("takes the scatter away with the data it came from", () => {
+      [1, 2, 3].forEach((x, row) => {
+        type("L1", row, String(x));
+        type("L2", row, String(2 * x));
+      });
+      act("plot");
+      expect(root.querySelectorAll("[data-graph-point]").length).toBe(3);
+
+      button("Stats").click();
+      act("clear");
+      button("ƒ(x)").click();
+      // A snapshot would go on showing points whose data was deleted.
+      expect(root.querySelectorAll("[data-graph-point]").length).toBe(0);
+    });
+
+    it("follows the data when a value is edited after plotting", () => {
+      [1, 2, 3].forEach((x, row) => {
+        type("L1", row, String(x));
+        type("L2", row, String(2 * x));
+      });
+      act("plot");
+      button("Stats").click();
+      // Inside the window the plot just fitted, which spans 0 to 4. A point
+      // outside it is correctly not drawn, which would prove nothing here.
+      type("L1", 3, "2.5");
+      type("L2", 3, "5");
+
+      button("ƒ(x)").click();
+      expect(root.querySelectorAll("[data-graph-point]").length).toBe(4);
+    });
+
+    it("frames the window on the data rather than on an unrelated curve", () => {
+      // Y1 is x^2-2, which over this window reaches 34. Sharing a scale with
+      // it would squash a scatter of 2 to 5 into a band at the bottom.
+      [1, 2, 3, 4, 5].forEach((x, row) => {
+        type("L1", row, String(x));
+        type("L2", row, String([2, 4, 5, 4, 5][row]));
+      });
+      act("plot");
+
+      const ys = [...root.querySelectorAll("[data-graph-point]")]
+        .map((dot) => Number(dot.getAttribute("cy")));
+      // The plot box is 200 tall; the points should use most of it.
+      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(100);
+    });
+
+    it("turns the scatter off again", () => {
+      [1, 2, 3].forEach((x, row) => {
+        type("L1", row, String(x));
+        type("L2", row, String(2 * x));
+      });
+      act("plot");
+      expect(root.querySelectorAll("[data-graph-point]").length).toBe(3);
+
+      // While data is on the chart the window frames the data, so an ordinary
+      // curve is drawn against the data's scale. There has to be a way back
+      // that is not "delete your data" or "reload the page".
+      const toggle = root.querySelector<HTMLElement>("[data-graph-scatter]");
+      expect(toggle?.getAttribute("aria-pressed")).toBe("true");
+
+      toggle?.click();
+      expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+      expect(root.querySelectorAll("[data-graph-point]").length).toBe(0);
+
+      toggle?.click();
+      expect(root.querySelectorAll("[data-graph-point]").length).toBe(3);
+    });
+
+    it("frames the window on the points it is actually drawing", () => {
+      [1, 2, 3].forEach((x, row) => {
+        type("L1", row, String(x));
+        type("L2", row, String(2 * x));
+      });
+      act("plot");
+      const spread = () => {
+        const ys = [...root.querySelectorAll("[data-graph-point]")]
+          .map((dot) => Number(dot.getAttribute("cy")));
+        return Math.max(...ys) - Math.min(...ys);
+      };
+      expect(spread()).toBeGreaterThan(100);
+
+      // A row far outside the window is not drawn, so it must not stretch the
+      // scale for the points that are.
+      button("Stats").click();
+      type("L1", 3, "500");
+      type("L2", 3, "1000");
+      button("ƒ(x)").click();
+
+      expect(root.querySelectorAll("[data-graph-point]").length).toBe(3);
+      expect(spread()).toBeGreaterThan(100);
+    });
+
+    it("draws the data over the line fitted to it", () => {
+      [1, 2, 3].forEach((x, row) => {
+        type("L1", row, String(x));
+        type("L2", row, String(2 * x));
+      });
+      act("plot");
+
+      const drawn = [...(root.querySelector("[data-graph-svg]")?.children ?? [])];
+      const lastCurve = drawn.map((node) => node.classList.contains("plot-line")).lastIndexOf(true);
+      const firstDot = drawn.findIndex((node) => node.classList.contains("plot-point"));
+      // The fitted line passes exactly through the dots, so order decides
+      // which one the reader can see.
+      expect(firstDot).toBeGreaterThan(lastCurve);
+    });
+
+    it("clears a cell holding text that is not a number", () => {
+      // The model already reads it as empty, so clearing is not a change and
+      // nothing would be redrawn -- leaving the text sitting there.
+      type("L1", 0, "wobble");
+      act("clear");
+      expect(cellInput("L1", 0)?.value).toBe("");
+    });
+
+    it("says which reason there is no line", () => {
+      type("L1", 0, "3");
+      type("L2", 0, "1");
+      expect(fit()).toContain("needs two rows");
+
+      // Three complete rows, all above the same x: a different problem, and
+      // "needs two rows" would send someone looking for the wrong one.
+      [1, 2].forEach((row) => {
+        type("L1", row, "3");
+        type("L2", row, String(row + 1));
+      });
+      expect(fit()).toContain("Every x is the same");
+    });
+
+    it("refuses to plot what has no line", () => {
+      act("plot");
+      expect(fit()).toContain("Nothing to plot");
+      expect(root.querySelector<HTMLElement>('[data-panel="stats"]')?.hidden).toBe(false);
+    });
+  });
+
   describe("table", () => {
     const rows = () => [...root.querySelectorAll("[data-table-body] tr")];
     const headers = () =>

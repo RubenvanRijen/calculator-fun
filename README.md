@@ -22,6 +22,8 @@ ts/
   graph.ts            samples functions across a range
   analysis.ts         roots, intersections and turning points
   function-series.ts  the four Y expressions, shared by the graph and table
+  stats.ts            one-variable figures and least-squares regression
+  stat-lists.ts       the two lists behind the Stats tab
   storage.ts          localStorage, guarded
   theme.ts            light/dark
   index.ts            composition root: builds the parts and wires them
@@ -29,9 +31,10 @@ ts/
     keypad.ts         the action registry, the 2nd layer, the keyboard
     display.ts        the expression and result lines
     history-panel.ts  |
-    register-panel.ts |  the four side-panel tabs
+    register-panel.ts |  the five side-panel tabs
     graph-panel.ts    |
     table-panel.ts    |
+    stats-panel.ts    |
   *.test.ts           unit tests
   types/              one type alias per file
   interfaces/         one interface per file
@@ -145,11 +148,45 @@ instead of blanking the table.
 The graph and the table are two views of one set of functions, so typing into
 `Y2` on the ƒ(x) tab reaches both.
 
+**Statistics.** The Stats tab holds two lists, edited as rows. A row needs both
+values to count as a point; one on its own still counts towards its own column.
+Below the editor, each column gets the figures the hardware reports — `n`, `Σx`,
+`Σx²`, `x̄`, `σ`, `s`, `min`, `Q1`, `med`, `Q3`, `max` — recomputed as you type.
+Quartiles follow the hardware too: the lower quartile is the median of the
+values below the median, and for an odd count the median belongs to neither
+half.
+
+`σ` divides by `n` and `s` by `n-1`. A single value has no `s` at all — one
+number says nothing about how far apart numbers are — and shows `—` rather than
+a zero it has not earned.
+
+**Regression.** The least-squares line through the paired rows is shown as you
+type, with `r` and `r²`. `plot & fit` puts the line in the first free ƒ(x) slot,
+fits the window to the data and draws the scatter. There is no line when there
+is nothing to fit: fewer than two paired rows, or every `x` the same — a
+vertical line has no slope, and a huge number would be a worse answer than
+saying so.
+
+The scatter is read from the lists rather than copied, so editing a value moves
+its point and clearing the lists takes the scatter with it. While data is on the
+chart the window frames the data, and a curve that does not fit is clipped —
+sharing a scale with an unrelated `x²` would squash a scatter of 2 to 5 into a
+band along the bottom. The `data` chip on the ƒ(x) tab turns the scatter off
+again, which is what puts an ordinary curve back on its own scale.
+
+`r` is left blank when `y` does not vary. The flat line through constant data is
+a perfect fit and its slope is worth having, but `r` is `0/0` there, and
+reporting `1` would assert a positive relationship that a slope of zero denies.
+An intercept that is only the residue of a cancellation is reported as `0`:
+data lying exactly on `y = 2.1x` leaves `-8.9e-16` behind, which is the float's
+error bar rather than an intercept.
+
 **Repeat equals.** `5 + 3 =` gives 8; press `=` again for 11, and again for 14.
 
 **Themes.** Light and dark, toggled in the header and remembered.
 
-**Everything persists.** History, memory and theme survive a reload via
+**Everything persists.** History, memory, the statistics lists and the theme
+survive a reload via
 `localStorage`, guarded so a private window or a full quota degrades to "no
 saved state" rather than breaking.
 
@@ -266,7 +303,7 @@ the operands are left alone so `DEL` can fix the entry.
 the button wiring opt into jsdom per file.
 
 ```bash
-npm test             # 828 unit tests
+npm test             # 889 unit tests
 npm run test:watch
 npm run coverage     # with thresholds
 npm run test:e2e     # Playwright, real browser, desktop + mobile

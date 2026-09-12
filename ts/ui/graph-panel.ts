@@ -6,6 +6,7 @@ import type { FunctionSeries } from "@/function-series.ts";
 import type { MultiPlotResult } from "@/interfaces/multi-plot-result.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { Curve } from "@/types/curve.ts";
+import type { PlotPoint } from "@/interfaces/plot-point.ts";
 import type { ExtremumKind } from "@/types/extremum-kind.ts";
 
 /** The SVG user-space the plot is drawn in. */
@@ -32,7 +33,9 @@ export function setupGraphPanel(
   /** The functions being plotted, shared with the table. */
   series: FunctionSeries,
   /** Supplies stored values, so "A*x" can be plotted. */
-  contextOf: () => EvalContext
+  contextOf: () => EvalContext,
+  /** Loose points drawn over the curves, for a scatter from the Stats tab. */
+  scatterOf: () => readonly PlotPoint[] = () => []
 ): { render: () => void } {
   const query = <T extends HTMLElement>(selector: string): T | null =>
     root.querySelector<T>(selector);
@@ -82,10 +85,17 @@ export function setupGraphPanel(
   const toScreenX = (x: number): number =>
     ((x - range.xMin) / (range.xMax - range.xMin)) * PLOT_WIDTH;
 
+  /**
+   * The y-range actually drawn: what the curves need, widened to hold the
+   * scatter. Points off the top of the box would otherwise be silently
+   * dropped, and a scatter is the one thing here with no curve to follow.
+   */
+  let view = { yMin: -1, yMax: 1 };
+
   const toScreenY = (y: number): number => {
-    if (plotted === null) return PLOT_HEIGHT / 2;
-    const span = plotted.yMax - plotted.yMin;
-    return PLOT_HEIGHT - ((y - plotted.yMin) / span) * PLOT_HEIGHT;
+    const span = view.yMax - view.yMin;
+    if (span === 0) return PLOT_HEIGHT / 2;
+    return PLOT_HEIGHT - ((y - view.yMin) / span) * PLOT_HEIGHT;
   };
 
   function render(): void {
@@ -112,12 +122,32 @@ export function setupGraphPanel(
       errorElement.hidden = problem === null;
     }
 
+    // Only the points that will actually be drawn: one far-off row would
+    // otherwise stretch the window for points that never appear, flattening
+    // the visible ones into a line along the bottom.
+    const scatter = scatterOf().filter(
+      (point) => point.x >= range.xMin && point.x <= range.xMax
+    );
+    if (scatter.length > 0) {
+      // Data on the chart is what the chart is for: the window fits the
+      // points, and a curve that does not fit is clipped. Widening to hold
+      // both instead would squash a scatter of 2 to 5 into a band at the
+      // bottom the moment an unrelated x^2 was still in Y1.
+      const ys = scatter.map((point) => point.y);
+      const low = Math.min(...ys);
+      const high = Math.max(...ys);
+      const margin = Math.max((high - low) * 0.1, 1);
+      view = { yMin: low - margin, yMax: high + margin };
+    } else {
+      view = { yMin: plotted.yMin, yMax: plotted.yMax };
+    }
+
     svg.replaceChildren();
 
     if (range.xMin < 0 && range.xMax > 0) {
       svg.append(line(toScreenX(0), 0, toScreenX(0), PLOT_HEIGHT));
     }
-    if (plotted.yMin < 0 && plotted.yMax > 0) {
+    if (view.yMin < 0 && view.yMax > 0) {
       svg.append(line(0, toScreenY(0), PLOT_WIDTH, toScreenY(0)));
     }
 
@@ -137,6 +167,18 @@ export function setupGraphPanel(
         svg.append(path);
       }
     });
+
+    // After the curves, so the fitted line does not paint over the data it
+    // was fitted to.
+    for (const point of scatter) {
+      const dot = doc.createElementNS(SVG_NS, "circle");
+      dot.setAttribute("r", "2.5");
+      dot.setAttribute("cx", toScreenX(point.x).toFixed(2));
+      dot.setAttribute("cy", toScreenY(point.y).toFixed(2));
+      dot.setAttribute("class", "plot-point");
+      dot.setAttribute("data-graph-point", "");
+      svg.append(dot);
+    }
 
     const marker = doc.createElementNS(SVG_NS, "circle");
     marker.setAttribute("r", "3.5");
@@ -278,7 +320,27 @@ export function setupGraphPanel(
     }, { signal });
   });
 
+  /**
+   * Put the model's text back in the fields.
+   *
+   * Expressions can be set from elsewhere -- the Stats tab drops a fitted line
+   * into the first free slot -- and a field that went on showing nothing while
+   * its curve was drawn would be a plain lie about what is on the chart.
+   *
+   * A field is left alone when it already says what the model holds, which is
+   * what keeps this from fighting the person typing: the model stores exactly
+   * the trimmed text, so "x + " mid-word matches "x +" and is not rewritten
+   * with the space eaten off the end.
+   */
+  function syncInputs(): void {
+    inputs.forEach((input, index) => {
+      const text = series.at(index);
+      if (input !== null && input.value.trim() !== text) input.value = text;
+    });
+  }
+
   series.onChange(() => {
+    syncInputs();
     traced = null;
     render();
   }, signal);
@@ -295,7 +357,7 @@ export function setupGraphPanel(
     const ratio = (event.clientX - bounds.left) / bounds.width;
     const x = range.xMin + ratio * (range.xMax - range.xMin);
     const yRatio = (event.clientY - bounds.top) / bounds.height;
-    const y = plotted.yMax - yRatio * (plotted.yMax - plotted.yMin);
+    const y = view.yMax - yRatio * (view.yMax - view.yMin);
 
     const series = nearestSeries(x, y);
     if (series !== null) showTrace(series, x);

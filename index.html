@@ -84,6 +84,7 @@
                     aria-selected="true">History</button>
                 <button data-tab="graph" class="tab" role="tab" type="button" aria-selected="false">ƒ(x)</button>
                 <button data-tab="table" class="tab" role="tab" type="button" aria-selected="false">Table</button>
+                <button data-tab="stats" class="tab" role="tab" type="button" aria-selected="false">Stats</button>
                 <button data-tab="vars" class="tab" role="tab" type="button" aria-selected="false">Vars</button>
             </div>
 
@@ -126,6 +127,47 @@
                             <tr data-table-head></tr>
                         </thead>
                         <tbody data-table-body></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section data-panel="stats" class="panel-body" hidden>
+                <p class="muted">
+                    Two lists. A row needs both values to count as a point;
+                    one on its own still counts towards its own column.
+                </p>
+
+                <div class="examples">
+                    <button data-stats-action="add" class="chip" type="button">+ row</button>
+                    <button data-stats-action="clear" class="chip" type="button">clear</button>
+                    <button data-stats-action="plot" class="chip" type="button">plot &amp; fit</button>
+                </div>
+
+                <div class="table-wrap">
+                    <table class="value-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col" class="series-label" data-series-label="2">L1</th>
+                                <th scope="col" class="series-label" data-series-label="3">L2</th>
+                            </tr>
+                        </thead>
+                        <tbody data-stats-body></tbody>
+                    </table>
+                </div>
+
+                <p data-stats-fit class="fit-line"></p>
+
+                <div class="table-wrap">
+                    <table class="value-table">
+                        <thead>
+                            <tr>
+                                <th scope="col"></th>
+                                <th scope="col" class="series-label" data-series-label="2">L1</th>
+                                <th scope="col" class="series-label" data-series-label="3">L2</th>
+                            </tr>
+                        </thead>
+                        <tbody data-stats-summary></tbody>
                     </table>
                 </div>
             </section>
@@ -179,6 +221,7 @@
                     <button data-graph-zoom="in" class="chip" type="button">zoom +</button>
                     <button data-graph-zoom="out" class="chip" type="button">zoom &minus;</button>
                     <button data-graph-zoom="reset" class="chip" type="button">reset</button>
+                    <button data-graph-scatter class="chip" type="button" aria-pressed="false">data</button>
                     <span class="chip-group">
                         <button data-graph-step="-1" class="chip" type="button" aria-label="Trace left">&#x25C0;</button>
                         <button data-graph-step="1" class="chip" type="button" aria-label="Trace right">&#x25B6;</button>

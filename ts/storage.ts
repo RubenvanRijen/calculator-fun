@@ -3,6 +3,7 @@ import type { HistoryEntry } from "@/interfaces/history-entry.ts";
 import type { Theme } from "@/types/theme.ts";
 import type { AngleMode } from "@/types/angle-mode.ts";
 import type { RegisterName } from "@/types/register-name.ts";
+import type { StatRow } from "@/interfaces/stat-row.ts";
 
 const STORAGE_KEY = "calculator-fun.state";
 
@@ -44,6 +45,7 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
       lastAnswer?: number | null;
       entries?: string[];
       registers?: Partial<Record<RegisterName, number>>;
+      lists?: StatRow[];
     } = {};
 
     if (Array.isArray(record["history"])) {
@@ -87,6 +89,18 @@ export function loadState(storage: Storage | null = safeStorage()): Partial<Pers
         if (typeof value === "number" && Number.isFinite(value)) registers[name] = value;
       }
       state.registers = registers;
+    }
+    if (Array.isArray(record["lists"])) {
+      // A cell is a finite number or nothing at all. Anything else saved by a
+      // future version, or corrupted in place, reads as an empty cell rather
+      // than taking the whole list down with it.
+      const cell = (value: unknown): number | null =>
+        typeof value === "number" && Number.isFinite(value) ? value : null;
+
+      state.lists = record["lists"]
+        .filter((row): row is Record<string, unknown> =>
+          typeof row === "object" && row !== null)
+        .map((row) => ({ L1: cell(row["L1"]), L2: cell(row["L2"]) }));
     }
     if (Array.isArray(record["entries"])) {
       state.entries = record["entries"].filter(

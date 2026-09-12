@@ -567,6 +567,31 @@ body {
     background: var(--chip);
 }
 
+/* The editable cells of the list editor: a field that reads as part of the
+   table rather than a box sitting inside it. */
+.cell-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--chip);
+    color: inherit;
+    font: inherit;
+    padding: 1px 2px;
+    text-align: right;
+    width: 100%;
+    min-width: 4.5em;
+}
+
+.cell-input:focus {
+    border-bottom-color: var(--accent);
+    outline: none;
+}
+
+.fit-line {
+    font-size: .82rem;
+    font-variant-numeric: tabular-nums;
+    margin: 8px 0 0;
+}
+
 .cell-error {
     color: var(--error);
 }
@@ -595,6 +620,18 @@ body {
     flex: none;
     text-transform: none;
     font-size: .85rem;
+}
+
+/* Scatter points from the Stats tab, drawn over the curves. */
+/* A chip that is a switch rather than a button, so its state has to show. */
+.chip.is-active {
+    background: var(--accent);
+    color: var(--equals-text);
+}
+
+.plot-point {
+    fill: var(--plot-line-3);
+    stroke: none;
 }
 
 .plot-marker {

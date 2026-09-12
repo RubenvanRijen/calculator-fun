@@ -7,6 +7,8 @@ import { RegisterPanel } from "@/ui/register-panel.ts";
 import { Keypad } from "@/ui/keypad.ts";
 import { setupGraphPanel } from "@/ui/graph-panel.ts";
 import { setupTablePanel } from "@/ui/table-panel.ts";
+import { setupStatsPanel } from "@/ui/stats-panel.ts";
+import { StatLists } from "@/stat-lists.ts";
 import { FunctionSeries, SERIES_COUNT } from "@/function-series.ts";
 import type { EvalContext } from "@/interfaces/eval-context.ts";
 import type { CalculatorHandle } from "@/interfaces/calculator-handle.ts";
@@ -36,6 +38,10 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   calculator.restore(saved);
   calculator.angleMode = saved.angleMode ?? "rad";
 
+  // Declared up here because persist() writes it out, and a const used before
+  // its line would be a crash waiting for someone to move a call.
+  const lists = new StatLists(saved.lists ?? []);
+
   let theme: Theme = saved.theme ?? preferredTheme();
   const themeIcon = root.querySelector<HTMLElement>("[data-theme-icon]");
 
@@ -53,6 +59,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
       lastAnswer: calculator.lastAnswer,
       entries: calculator.entries,
       registers: calculator.registers,
+      lists: lists.rows(),
     });
   };
 
@@ -91,8 +98,57 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     registers: calculator.registers,
     ans: calculator.lastAnswer ?? undefined,
   });
-  const graph = setupGraphPanel(root, doc, signal, series, graphContext);
+  // Whether the graph is showing the statistics data. The points themselves
+  // are read from the lists each time rather than copied, so editing a cell
+  // moves its point and clearing the lists takes the scatter with it -- a
+  // snapshot would go on showing data that had been deleted.
+  let plottingData = false;
+  const scatterToggle = root.querySelector<HTMLElement>("[data-graph-scatter]");
+
+  const graph = setupGraphPanel(
+    root, doc, signal, series, graphContext,
+    () => (plottingData ? lists.pairs() : [])
+  );
   const table = setupTablePanel(root, doc, signal, series, graphContext);
+
+  /**
+   * Turn the scatter on or off.
+   *
+   * It needs an off: while data is on the chart the window frames the data,
+   * so an ordinary curve is drawn against the data's scale and can end up far
+   * off the top of the box. Without this the only ways back would be deleting
+   * the data or reloading the page.
+   */
+  function showScatter(on: boolean): void {
+    plottingData = on;
+    scatterToggle?.classList.toggle("is-active", on);
+    scatterToggle?.setAttribute("aria-pressed", String(on));
+    graph.render();
+  }
+
+  scatterToggle?.addEventListener("click", () => {
+    showScatter(!plottingData);
+  }, { signal });
+
+  const stats = setupStatsPanel(root, doc, signal, lists, (fit) => {
+
+    // Fit the window to the data, or the points land off the edge of whatever
+    // range was left over from the last thing plotted.
+    const xs = lists.pairs().map((point) => point.x);
+    const margin = Math.max((Math.max(...xs) - Math.min(...xs)) * 0.1, 1);
+    const minInput = root.querySelector<HTMLInputElement>("[data-graph-min]");
+    const maxInput = root.querySelector<HTMLInputElement>("[data-graph-max]");
+    if (minInput) minInput.value = String(parseFloat((Math.min(...xs) - margin).toPrecision(6)));
+    if (maxInput) maxInput.value = String(parseFloat((Math.max(...xs) + margin).toPrecision(6)));
+
+    // The fit goes in the first free slot, so a curve already being looked at
+    // is not overwritten by pressing plot.
+    const free = series.all().findIndex((expression) => expression === "");
+    series.set(free === -1 ? SERIES_COUNT - 1 : free, fit);
+
+    showScatter(true);
+    showTab("graph");
+  });
 
   // Anything clicked outside the keypad -- a tab, a history entry, the theme
   // toggle, a graph chip -- also spends a pending 2nd. Otherwise the shift
@@ -143,25 +199,35 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   const tabs = [...root.querySelectorAll<HTMLElement>("[data-tab]")];
   const panels = [...root.querySelectorAll<HTMLElement>("[data-panel]")];
   /** What to do when a panel becomes visible, keyed by its name. */
+  // No redraw here: the lists can only be edited from the Stats tab, so the
+  // graph is never on screen when they change, and showing it renders it.
+  lists.onChange(persist, signal);
+
   const onShow: Record<string, () => void> = {
     graph: graph.render,
     table: table.render,
+    stats: stats.render,
   };
+
+  /** Show one tab's panel and hide the rest. */
+  function showTab(name: string): void {
+    for (const other of tabs) {
+      const active = other.dataset["tab"] === name;
+      other.classList.toggle("is-active", active);
+      other.setAttribute("aria-selected", String(active));
+    }
+    for (const panel of panels) {
+      panel.hidden = panel.dataset["panel"] !== name;
+    }
+    onShow[name]?.();
+  }
 
   for (const tab of tabs) {
     tab.addEventListener(
       "click",
       () => {
         const name = tab.dataset["tab"];
-        for (const other of tabs) {
-          const active = other === tab;
-          other.classList.toggle("is-active", active);
-          other.setAttribute("aria-selected", String(active));
-        }
-        for (const panel of panels) {
-          panel.hidden = panel.dataset["panel"] !== name;
-        }
-        if (name !== undefined) onShow[name]?.();
+        if (name !== undefined) showTab(name);
       },
       { signal }
     );

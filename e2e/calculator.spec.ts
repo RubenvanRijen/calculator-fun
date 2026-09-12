@@ -530,7 +530,7 @@ test.describe("graph", () => {
     const header = page.locator("[data-table-head] th").first();
 
     const before = await header.boundingBox();
-    await page.locator(".table-wrap").evaluate((box) => {
+    await page.locator('[data-panel="table"] .table-wrap').evaluate((box) => {
       box.scrollTop = 200;
     });
     const after = await header.boundingBox();
@@ -540,6 +540,61 @@ test.describe("graph", () => {
     // straight through the labels. An opaque colour computes as rgb(), not rgba().
     const background = await header.evaluate((cell) => getComputedStyle(cell).backgroundColor);
     expect(background).not.toContain("rgba");
+  });
+
+  test("summarises a list and fits a line to it", async ({ page }) => {
+    await page.locator('[data-tab="stats"]').click();
+
+    // y = 3x + 1, exactly.
+    for (const [row, x] of [0, 1, 2, 3].entries()) {
+      await page.locator(`[data-stats-cell="L1"][data-stats-row="${row}"]`).fill(String(x));
+      await page.locator(`[data-stats-cell="L2"][data-stats-row="${row}"]`).fill(String(3 * x + 1));
+    }
+
+    const summary = page.locator("[data-stats-summary]");
+    await expect(summary).toContainText("1.5");
+    await expect(page.locator("[data-stats-fit]")).toContainText("y = 3x + 1");
+    await expect(page.locator("[data-stats-fit]")).toContainText("r² = 1");
+  });
+
+  test("plots the scatter with its fitted line", async ({ page }) => {
+    await page.locator('[data-tab="stats"]').click();
+    for (const [row, x] of [1, 2, 3, 4].entries()) {
+      await page.locator(`[data-stats-cell="L1"][data-stats-row="${row}"]`).fill(String(x));
+      await page.locator(`[data-stats-cell="L2"][data-stats-row="${row}"]`).fill(String(2 * x));
+    }
+    await page.locator('[data-stats-action="plot"]').click();
+
+    // It moves to the graph, draws a point per row, and shows the line in the
+    // first free field rather than over the top of Y1.
+    await expect(page.locator('[data-panel="graph"]')).toBeVisible();
+    await expect(page.locator("[data-graph-point]")).toHaveCount(4);
+    await expect(page.locator('[data-graph-input="1"]')).toHaveValue("2*x+0");
+  });
+
+  test("turns the scatter off from the graph", async ({ page }) => {
+    await page.locator('[data-tab="stats"]').click();
+    for (const [row, x] of [1, 2, 3].entries()) {
+      await page.locator(`[data-stats-cell="L1"][data-stats-row="${row}"]`).fill(String(x));
+      await page.locator(`[data-stats-cell="L2"][data-stats-row="${row}"]`).fill(String(2 * x));
+    }
+    await page.locator('[data-stats-action="plot"]').click();
+    await expect(page.locator("[data-graph-point]")).toHaveCount(3);
+
+    // Without a way off, an ordinary curve would go on being drawn against
+    // the data's scale, far off the top of the box.
+    await page.locator("[data-graph-scatter]").click();
+    await expect(page.locator("[data-graph-point]")).toHaveCount(0);
+    await expect(page.locator("[data-graph-scatter]")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  test("keeps the lists across a reload", async ({ page }) => {
+    await page.locator('[data-tab="stats"]').click();
+    await page.locator('[data-stats-cell="L1"][data-stats-row="0"]').fill("42");
+
+    await page.reload();
+    await page.locator('[data-tab="stats"]').click();
+    await expect(page.locator('[data-stats-cell="L1"][data-stats-row="0"]')).toHaveValue("42");
   });
 
   test("typing in the graph input does not drive the keypad", async ({ page }) => {

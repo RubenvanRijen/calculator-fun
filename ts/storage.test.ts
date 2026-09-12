@@ -44,6 +44,7 @@ describe("storage", () => {
         lastAnswer: 35,
         entries: ["1+1"],
         registers: { A: 12 },
+        lists: [{ L1: 1, L2: 2 }],
       },
       storage
     );
@@ -55,12 +56,13 @@ describe("storage", () => {
       lastAnswer: 35,
       entries: ["1+1"],
       registers: { A: 12 },
+      lists: [{ L1: 1, L2: 2 }],
     });
   });
 
   it("round-trips a null last answer", () => {
     saveState(
-      { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {} },
+      { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {}, lists: [] },
       storage
     );
     expect(loadState(storage).lastAnswer).toBeNull();
@@ -72,7 +74,7 @@ describe("storage", () => {
 
   it("clears", () => {
     saveState(
-      { history: [], memory: 1, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {} },
+      { history: [], memory: 1, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {}, lists: [] },
       storage
     );
     clearState(storage);
@@ -86,6 +88,24 @@ describe("storage", () => {
 
     it("ignores a non-object", () => {
       expect(loadState(memoryStorage({ "calculator-fun.state": '"hello"' }))).toEqual({});
+    });
+
+    it("reads a broken list cell as an empty one", () => {
+      // A cell corrupted in place, or written by a version that stored
+      // something else, should cost that cell and not the whole list.
+      const raw = JSON.stringify({
+        lists: [{ L1: 1, L2: "two" }, { L1: null, L2: 4 }, 42],
+      });
+      expect(loadState(memoryStorage({ "calculator-fun.state": raw })).lists)
+        .toEqual([{ L1: 1, L2: null }, { L1: null, L2: 4 }]);
+    });
+
+    it("reads a non-finite list cell as an empty one", () => {
+      // JSON has no Infinity, so it arrives as null already; NaN does not
+      // survive the round trip either. A string "Infinity" might.
+      const raw = JSON.stringify({ lists: [{ L1: "Infinity", L2: 3 }] });
+      expect(loadState(memoryStorage({ "calculator-fun.state": raw })).lists)
+        .toEqual([{ L1: null, L2: 3 }]);
     });
 
     it("drops history entries of the wrong shape", () => {
@@ -137,7 +157,7 @@ describe("storage", () => {
     it("saves without throwing", () => {
       expect(() =>
         saveState(
-          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {} },
+          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {}, lists: [] },
           hostileStorage()
         )
       ).not.toThrow();
@@ -151,7 +171,7 @@ describe("storage", () => {
       expect(loadState(null)).toEqual({});
       expect(() =>
         saveState(
-          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {} },
+          { history: [], memory: 0, theme: "light", angleMode: "rad", lastAnswer: null, entries: [], registers: {}, lists: [] },
           null
         )
       ).not.toThrow();
