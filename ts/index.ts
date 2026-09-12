@@ -98,7 +98,7 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     persist();
   }
 
-  const keypad = new Keypad(root, doc, calculator, signal, update);
+  const keypad = new Keypad(root, doc, signal, calculator, update);
   // The graph and the table are two views of one set of functions, so the
   // expressions live outside both of them.
   const series = new FunctionSeries(
@@ -145,16 +145,17 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
     showScatter(!plottingData);
   }, { signal });
 
-  const stats = setupStatsPanel(root, doc, signal, lists, (fit) => {
+  const matrixPanel = setupMatrixPanel(root, doc, signal, matrices);
 
+  // No redraw on either: both stores are edited only from their own tab, so
+  // the graph is never on screen when they change, and showing it renders it.
+  lists.onChange(persist, signal);
+  matrices.onChange(persist, signal);
+
+  const stats = setupStatsPanel(root, doc, signal, lists, (fit) => {
     // Fit the window to the data, or the points land off the edge of whatever
     // range was left over from the last thing plotted.
-    const xs = lists.pairs().map((point) => point.x);
-    const margin = Math.max((Math.max(...xs) - Math.min(...xs)) * 0.1, 1);
-    const minInput = root.querySelector<HTMLInputElement>("[data-graph-min]");
-    const maxInput = root.querySelector<HTMLInputElement>("[data-graph-max]");
-    if (minInput) minInput.value = String(parseFloat((Math.min(...xs) - margin).toPrecision(6)));
-    if (maxInput) maxInput.value = String(parseFloat((Math.max(...xs) + margin).toPrecision(6)));
+    graph.frameTo(lists.pairs());
 
     // The fit goes in the first free slot, so a curve already being looked at
     // is not overwritten by pressing plot.
@@ -214,13 +215,6 @@ export function setupCalculator(root: Document | HTMLElement): CalculatorHandle 
   const tabs = [...root.querySelectorAll<HTMLElement>("[data-tab]")];
   const panels = [...root.querySelectorAll<HTMLElement>("[data-panel]")];
   /** What to do when a panel becomes visible, keyed by its name. */
-  // No redraw here: the lists can only be edited from the Stats tab, so the
-  // graph is never on screen when they change, and showing it renders it.
-  lists.onChange(persist, signal);
-  matrices.onChange(persist, signal);
-
-  const matrixPanel = setupMatrixPanel(root, doc, signal, matrices);
-
   const onShow: Record<string, () => void> = {
     graph: graph.render,
     table: table.render,

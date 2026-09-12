@@ -38,7 +38,7 @@ export function setupGraphPanel(
   contextOf: () => EvalContext,
   /** Loose points drawn over the curves, for a scatter from the Stats tab. */
   scatterOf: () => readonly PlotPoint[] = () => []
-): { render: () => void; forgetArea: () => void } {
+): { render: () => void; forgetArea: () => void; frameTo: (points: readonly PlotPoint[]) => void } {
   const query = <T extends HTMLElement>(selector: string): T | null =>
     root.querySelector<T>(selector);
 
@@ -395,5 +395,19 @@ export function setupGraphPanel(
     if (readout) readout.textContent = "";
   };
 
-  return { render, forgetArea };
+  /**
+   * Put the window around `points`, for a caller that has data to show but no
+   * business knowing how this panel spells a range.
+   *
+   * Writes the fields and stops. Nothing is redrawn, because the caller is
+   * part-way through setting a plot up -- an expression still to go in, a
+   * scatter still to switch on -- and a redraw here would draw half of it.
+   */
+  const frameTo = (points: readonly PlotPoint[]): void => {
+    const fitted = windowAround(points.map((point) => point.x));
+    if (minInput) minInput.value = boundText(fitted.min);
+    if (maxInput) maxInput.value = boundText(fitted.max);
+  };
+
+  return { render, forgetArea, frameTo };
 }

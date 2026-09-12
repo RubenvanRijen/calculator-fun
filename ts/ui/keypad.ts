@@ -32,8 +32,8 @@ export class Keypad {
   constructor(
     root: Document | HTMLElement,
     doc: Document,
-    calculator: Calculator,
     signal: AbortSignal,
+    calculator: Calculator,
     onChange: () => void
   ) {
     const element = root.querySelector<HTMLElement>("[data-keypad]");
