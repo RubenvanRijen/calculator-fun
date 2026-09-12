@@ -1,4 +1,5 @@
-import { tokenize, toRpn, evaluateRpn } from "@/expression.ts";
+import { evaluateRpn } from "@/expression.ts";
+import { parseExpression } from "@/parsing.ts";
 import type { PlotPoint } from "@/interfaces/plot-point.ts";
 import type { PlotSegment } from "@/types/plot-segment.ts";
 import type { PlotResult } from "@/interfaces/plot-result.ts";
@@ -33,13 +34,9 @@ export function plot(
     return { ...EMPTY, error: "x-max must be greater than x-min" };
   }
 
-  let rpn;
-  try {
-    rpn = toRpn(tokenize(expression));
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : "Invalid expression";
-    return { ...EMPTY, error: message };
-  }
+  const parsed = parseExpression(expression);
+  if (parsed.error !== null) return { ...EMPTY, error: parsed.error };
+  const { rpn } = parsed;
 
   // Two points is the fewest that can describe a line; fewer would divide by
   // zero below and yield NaN for every x.
@@ -124,7 +121,9 @@ export function plot(
  *
  * Parsing once and evaluating many times is the point: a table of fifty rows
  * across four functions would otherwise re-tokenize two hundred times. The
- * context is read per call, so a stored value changed between calls is seen.
+ * parse itself is remembered between calls too, so the second curve asked for
+ * the same expression costs nothing. The context is read per call, so a stored
+ * value changed between calls is still seen.
  *
  * Always radians, as everywhere else a curve is drawn: the keypad's angle mode
  * belongs to what is typed on the keypad.
@@ -134,12 +133,9 @@ export function compileCurve(
   contextOf: () => EvalContext
 ): Curve | null {
   if (expression.trim() === "") return null;
-  try {
-    const rpn = toRpn(tokenize(expression));
-    return (x) => evaluateRpn(rpn, { ...contextOf(), angleMode: "rad", x });
-  } catch {
-    return null;
-  }
+  const { rpn } = parseExpression(expression);
+  if (rpn === null) return null;
+  return (x) => evaluateRpn(rpn, { ...contextOf(), angleMode: "rad", x });
 }
 
 /**
